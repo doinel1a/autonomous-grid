@@ -15,6 +15,13 @@ const prettier = (filenames) => {
   return `pnpm exec prettier --write ${files} --cache`;
 };
 
+const solhint = (filenames) => {
+  const files = filenames
+    .map((f) => path.relative(process.cwd(), f).replace(/\\/g, '/'))
+    .join(' ');
+  return `pnpm --filter contracts exec solhint ${files} --fix`;
+};
+
 export default {
   // Dapp files
   'apps/dapp/**/*.{ts,tsx}': () => 'pnpm --filter dapp typecheck',
@@ -23,6 +30,6 @@ export default {
 
   // Contracts files
   'packages/contracts/**/*.{ts,js}': [prettier],
-  'packages/contracts/**/*.sol': [prettier],
+  'packages/contracts/**/*.sol': [solhint, prettier],
   'packages/contracts/**/*.ts': () => 'pnpm --filter contracts typecheck',
 };

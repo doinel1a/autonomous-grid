@@ -11,18 +11,18 @@ contract CounterTest is Test {
     counter = new Counter();
   }
 
-  function test_InitialValue() public view {
+  function testInitialValue() public view {
     require(counter.x() == 0, 'Initial value should be 0');
   }
 
-  function testFuzz_Inc(uint8 x) public {
+  function testFuzzInc(uint8 x) public {
     for (uint8 i = 0; i < x; i++) {
       counter.inc();
     }
     require(counter.x() == x, 'Value after calling inc x times should be x');
   }
 
-  function test_IncByZero() public {
+  function testIncByZero() public {
     vm.expectRevert();
     counter.incBy(0);
   }

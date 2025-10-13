@@ -1,0 +1,22 @@
+{
+  "extends": "solhint:recommended",
+  "rules": {
+    "compiler-version": ["error", "^0.8.0"],
+    "func-visibility": ["warn", { "ignoreConstructors": true }],
+    "no-unused-vars": "warn",
+    "const-name-snakecase": "warn",
+    "func-name-mixedcase": "error",
+    "modifier-name-mixedcase": "error",
+    "var-name-mixedcase": "warn",
+    "max-line-length": ["warn", 120],
+    "quotes": ["error", "double"],
+    "no-console": "warn",
+    "no-empty-blocks": "warn",
+    "state-visibility": "warn",
+    "explicit-types": "off",
+    "gas-custom-errors": "warn",
+    "gas-small-strings": "warn",
+    "reason-string": ["warn", { "maxLength": 64 }],
+    "use-natspec": "off"
+  }
+}
