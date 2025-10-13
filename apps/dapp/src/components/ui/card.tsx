@@ -28,7 +28,7 @@ const CardTitle = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivE
   ({ className, ...properties }, reference) => (
     <div
       ref={reference}
-      className={cn('leading-none font-semibold tracking-tight', className)}
+      className={cn('font-semibold leading-none tracking-tight', className)}
       {...properties}
     />
   )

@@ -6,7 +6,6 @@ import React from 'react';
 import type { Metadata, Viewport } from 'next';
 import type { PropsWithChildren } from 'react';
 
-import config from '_config';
 import { Analytics } from '@vercel/analytics/react';
 
 import Footer from '@/components/footer';
@@ -15,6 +14,8 @@ import WithSupportedChains from '@/components/hoc/with-supported-chains';
 import Navbar from '@/components/navbar';
 import RootProvider from '@/components/providers/root';
 import { Toaster } from '@/components/ui/sonner';
+
+import config from '../../_config';
 
 export const metadata: Metadata = {
   title: config.metadata.title,
