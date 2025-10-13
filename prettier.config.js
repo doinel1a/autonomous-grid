@@ -14,6 +14,7 @@ export default {
   endOfLine: 'lf',
   plugins: [
     '@ianvs/prettier-plugin-sort-imports',
+    'prettier-plugin-solidity',
     'prettier-plugin-tailwindcss' // must be last
   ],
   importOrder: [

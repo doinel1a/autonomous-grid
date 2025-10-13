@@ -5,6 +5,9 @@
 
 # testing
 /coverage
+/__tests_results__/
+/playwright-report/
+/playwright/.cache/
 
 # next.js
 /.next/
@@ -21,18 +24,13 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
 
 # local env files
-.env*.local
+.env
 
 # vercel
 .vercel
 
 # typescript
-*.tsbuildinfo
 next-env.d.ts
-
-# hardhat/contracts
-**/cache
-**/artifacts
-**/typechain-types

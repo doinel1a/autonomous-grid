@@ -1,0 +1,28 @@
+{
+  "name": "contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "compile": "hardhat compile",
+    "build": "hardhat compile",
+    "node": "hardhat node",
+    "test": "hardhat test",
+    "typecheck": "tsc --noEmit",
+    "lint": "solhint \"contracts/**/*.sol\"",
+    "lint:fix": "solhint \"contracts/**/*.sol\" --fix",
+    "clean": "hardhat clean && rm -rf cache artifacts typechain-types",
+    "deploy:local": "hardhat ignition deploy ignition/modules/Counter.ts --network hardhatMainnet",
+    "deploy:sepolia": "hardhat ignition deploy ignition/modules/Counter.ts --network sepolia"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ignition": "^3.0.0",
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.0",
+    "@types/node": "^22.8.5",
+    "forge-std": "github:foundry-rs/forge-std#v1.9.4",
+    "hardhat": "^3.0.7",
+    "solhint": "^6.0.1",
+    "typescript": "~5.8.0",
+    "viem": "^2.30.0"
+  }
+}
