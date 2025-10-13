@@ -5,10 +5,10 @@ import path from 'node:path';
 
 const tsc = () => 'tsc --noEmit';
 
-const eslint = (filenames) =>
-  `next lint --fix --file ${filenames
-    .map((f) => path.relative(process.cwd(), f))
-    .join(' --file ')}`;
+const eslint = (filenames) => {
+  const files = filenames.map((f) => path.relative(process.cwd(), f)).join(' ');
+  return [`eslint --fix ${files}`, `eslint --max-warnings=0 ${files}`];
+};
 
 const prettier = (filenames) =>
   `prettier --write ${filenames.map((f) => path.relative(process.cwd(), f)).join(' ')} --cache`;
