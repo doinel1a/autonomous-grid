@@ -6,6 +6,7 @@ export default function useCopyToClipboard(timeout = 2000) {
 
   useEffect(() => {
     const isClipboardApiSupported = !!navigator.clipboard.writeText;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsClipboardApiSupported(isClipboardApiSupported);
   }, []);
 

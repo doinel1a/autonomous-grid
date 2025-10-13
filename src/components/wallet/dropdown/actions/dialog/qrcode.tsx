@@ -30,7 +30,6 @@ export default function QRCodeDialog({
 
   useEffect(() => {
     if (!address) {
-      setBase64QRCode(null);
       return;
     }
 

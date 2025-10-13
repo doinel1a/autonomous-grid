@@ -45,6 +45,7 @@ export default function WithSupportedChains({ children }: Readonly<TWithSupporte
 
   useEffect(() => {
     if (isConnectedToSupportedChain) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       onSwitchSuccessCallback();
     } else {
       setIsSwitchChainDialogOpen(true);

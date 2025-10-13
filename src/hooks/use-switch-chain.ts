@@ -6,7 +6,7 @@ import { useAccount, useSwitchChain as useWagmiSwitchChain } from 'wagmi';
 export default function useSwitchChain(onSuccessCallback?: () => void) {
   const { chainId: activeChainId } = useAccount();
   const { chains, variables, isError, isSuccess, reset, switchChainAsync } = useWagmiSwitchChain();
-  const mainnetChains = useMemo(() => chains.filter((chain) => !!!chain.testnet), [chains]);
+  const mainnetChains = useMemo(() => chains.filter((chain) => !chain.testnet), [chains]);
   const testnetChains = useMemo(() => chains.filter((chain) => !!chain.testnet), [chains]);
 
   const activeChain = useMemo(
@@ -15,7 +15,7 @@ export default function useSwitchChain(onSuccessCallback?: () => void) {
   );
 
   const isConnectedToSupportedChain = useMemo(
-    () => (activeChainId ? !!chains.some((chain) => chain.id === activeChainId) : true),
+    () => (activeChainId ? chains.some((chain) => chain.id === activeChainId) : true),
     [activeChainId, chains]
   );
 
