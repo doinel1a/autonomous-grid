@@ -7,7 +7,15 @@
     },
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**"]
+      "outputs": [".next/**", "!.next/cache/**", "artifacts/**", "cache/**", "typechain-types/**"]
+    },
+    "compile": {
+      "outputs": ["artifacts/**", "cache/**", "typechain-types/**"]
+    },
+    "node": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["compile"]
     },
     "preview": {
       "cache": false,
@@ -25,7 +33,18 @@
       "cache": false
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^compile"]
+    },
+    "clean": {
+      "cache": false
+    },
+    "deploy:local": {
+      "dependsOn": ["compile"],
+      "cache": false
+    },
+    "deploy:sepolia": {
+      "dependsOn": ["compile"],
+      "cache": false
     }
   }
 }

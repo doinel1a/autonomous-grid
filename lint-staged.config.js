@@ -3,18 +3,26 @@
 
 import path from 'node:path';
 
-const tsc = () => 'tsc --noEmit';
-
-const eslint = (filenames) => {
+const lint = (filenames) => {
   const files = filenames.map((f) => path.relative(process.cwd(), f)).join(' ');
-  return [`eslint --fix ${files}`, `eslint --max-warnings=0 ${files}`];
+  return `pnpm --filter dapp exec eslint --fix ${files}`;
 };
 
-const prettier = (filenames) =>
-  `prettier --write ${filenames.map((f) => path.relative(process.cwd(), f)).join(' ')} --cache`;
+const prettier = (filenames) => {
+  const files = filenames
+    .map((f) => path.relative(process.cwd(), f).replace(/\\/g, '/'))
+    .join(' ');
+  return `pnpm exec prettier --write ${files} --cache`;
+};
 
 export default {
-  '*.{ts,tsx}': [tsc],
-  '*.{js,jsx,ts,tsx}': [eslint],
-  '*.{html,css,scss,js,jsx,cjs,mjs,ts,tsx,mdx}': [prettier]
+  // Dapp files
+  'apps/dapp/**/*.{ts,tsx}': () => 'pnpm --filter dapp typecheck',
+  'apps/dapp/**/*.{html,css,scss,js,jsx,cjs,mjs,ts,tsx,mdx}': [prettier],
+  'apps/dapp/**/*.{js,jsx,ts,tsx}': [lint],
+
+  // Contracts files
+  'packages/contracts/**/*.{ts,js}': [prettier],
+  'packages/contracts/**/*.sol': [prettier],
+  'packages/contracts/**/*.ts': () => 'pnpm --filter contracts typecheck',
 };

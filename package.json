@@ -18,14 +18,21 @@
   "scripts": {
     "prepare": "husky",
     "dev": "turbo run dev",
+    "dev:dapp": "pnpm --filter dapp dev",
+    "dev:node": "pnpm --filter contracts node",
     "build": "turbo run build",
+    "compile": "turbo run compile",
     "preview": "turbo run preview",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
     "format": "prettier --write **/**/*.{html,css,scss,js,jsx,cjs,mjs,ts,tsx,mdx,sol} --cache",
     "test": "turbo run test",
-    "test:ui": "pnpm --filter dapp test:ui"
+    "test:ui": "pnpm --filter dapp test:ui",
+    "test:contracts": "pnpm --filter contracts test",
+    "clean": "turbo run clean",
+    "deploy:local": "pnpm --filter contracts deploy:local",
+    "deploy:sepolia": "pnpm --filter contracts deploy:sepolia"
   },
   "devDependencies": {
     "@commitlint/cli": "20.1.0",
@@ -34,6 +41,7 @@
     "husky": "9.1.7",
     "lint-staged": "16.2.4",
     "prettier": "3.6.2",
+    "prettier-plugin-solidity": "^2.1.0",
     "prettier-plugin-tailwindcss": "0.6.14",
     "turbo": "2.5.8"
   }
