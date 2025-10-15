@@ -6,12 +6,16 @@ export const env = createEnv({
   client: {},
   server: {
     OPEN_AI_API_KEY: z.string(),
-    OPEN_AI_API_KEYe: z.string()
+    SEPOLIA_RPC_URL: z.url(),
+    WALLET_1_PRIVATE_KEY: z.url(),
+    WALLET_2_PRIVATE_KEY: z.url()
   },
 
   runtimeEnvStrict: {
     OPEN_AI_API_KEY: process.env.OPEN_AI_API_KEY,
-    OPEN_AI_API_KEYe: process.env.OPEN_AI_API_KEYe
+    SEPOLIA_RPC_URL: process.env.SEPOLIA_RPC_URL,
+    WALLET_1_PRIVATE_KEY: process.env.WALLET_1_PRIVATE_KEY,
+    WALLET_2_PRIVATE_KEY: process.env.WALLET_2_PRIVATE_KEY
   },
 
   runtimeEnv: process.env,

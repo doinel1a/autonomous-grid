@@ -88,10 +88,8 @@ const agent = new Agent({
           functionName: 'transfer',
           args: [to as Address, parseEther(amount)]
         });
-        console.log('txHash', txHash);
 
-        const receipt = await client.waitForTransactionReceipt({ hash: txHash });
-        console.log('receipt', receipt);
+        await client.waitForTransactionReceipt({ hash: txHash });
 
         return `Successfully transferred ${amount} D1A from ${from} to ${to}. Transaction hash: ${txHash}`;
       }
@@ -106,6 +104,9 @@ agent
   })
   .then((response) => {
     console.log(response.text);
+  })
+  .catch((error) => {
+    console.error('Error:', error);
   });
 
 // agent
@@ -114,6 +115,9 @@ agent
 //   })
 //   .then((response) => {
 //     console.log(response.text);
+//   })
+//   .catch((error) => {
+//     console.error('Error:', error);
 //   });
 
 // agent
@@ -123,4 +127,7 @@ agent
 //   })
 //   .then((response) => {
 //     console.log(response.text);
+//   })
+//   .catch((error) => {
+//     console.error('Error:', error);
 //   });
