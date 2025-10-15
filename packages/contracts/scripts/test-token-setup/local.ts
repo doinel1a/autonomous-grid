@@ -7,11 +7,11 @@ import { Address, formatEther, parseEther } from 'viem';
 import { agentsPlaygroundPath, artifactPath, localDeploymentPath } from './_shared.js';
 
 /**
- * Post-deployment setup script
+ * Post-deployment setup script for local
  * Distributes D1A tokens to test accounts and saves configuration information
  */
 async function main() {
-  console.log('🚀 Starting "TestToken" system setup...');
+  console.log('🚀 Starting "TestToken" Local setup...');
   console.log('\n');
 
   const { viem } = await network.connect({
@@ -28,7 +28,7 @@ async function main() {
   console.log('\n');
 
   if (!fs.existsSync(localDeploymentPath)) {
-    console.error('❌ Error: TestToken contract not deployed');
+    console.error('❌ Error: TestToken contract not deployed locally');
     console.error('Run: pnpm deploy:testToken:local');
     process.exit(1);
   }
@@ -79,7 +79,7 @@ async function main() {
   const config = generateAgentConfig(contractAddress, abi);
   fs.writeFileSync(path.join(agentsPlaygroundPath, 'local.ts'), config);
 
-  console.log('✨ Setup completed successfully!');
+  console.log('✨ Local setup completed successfully!');
 }
 
 function generateAgentConfig(contractAddress: Address, abi: unknown) {
@@ -116,6 +116,6 @@ function generateAgentConfig(contractAddress: Address, abi: unknown) {
 main()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error('❌ Error during "TestToken" setup:', error);
+    console.error('❌ Error during "TestToken" Local setup:', error);
     process.exit(1);
   });

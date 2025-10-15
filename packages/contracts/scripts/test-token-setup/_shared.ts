@@ -14,6 +14,16 @@ export const localDeploymentPath = path.join(
   'deployed_addresses.json'
 );
 
+export const sepoliaDeploymentPath = path.join(
+  __dirname,
+  '..',
+  '..',
+  'ignition',
+  'deployments',
+  'chain-11155111',
+  'deployed_addresses.json'
+);
+
 export const agentsPlaygroundPath = path.join(
   __dirname,
   '..',

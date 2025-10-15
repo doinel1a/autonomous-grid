@@ -13,7 +13,9 @@
     "lint:fix": "solhint \"contracts/**/*.sol\" --fix",
     "clean": "hardhat clean && rm -rf cache artifacts typechain-types",
     "setup:testToken:local": "hardhat run scripts/test-token-setup/local.ts",
-    "deploy:testToken:local": "hardhat ignition deploy ignition/modules/TestToken.ts --network localhost"
+    "setup:testToken:sepolia": "hardhat run scripts/test-token-setup/sepolia.ts",
+    "deploy:testToken:local": "hardhat ignition deploy ignition/modules/TestToken.ts --network localhost",
+    "deploy:testToken:sepolia": "hardhat ignition deploy ignition/modules/TestToken.ts --network sepolia"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ignition": "3.0.0",
