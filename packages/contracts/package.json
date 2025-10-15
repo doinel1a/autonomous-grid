@@ -12,13 +12,14 @@
     "lint": "solhint \"contracts/**/*.sol\"",
     "lint:fix": "solhint \"contracts/**/*.sol\" --fix",
     "clean": "hardhat clean && rm -rf cache artifacts typechain-types",
-    "deploy:local": "hardhat ignition deploy ignition/modules/Counter.ts --network hardhatMainnet",
-    "deploy:sepolia": "hardhat ignition deploy ignition/modules/Counter.ts --network sepolia"
+    "setup:testToken:local": "hardhat run scripts/test-token-setup/local.ts",
+    "deploy:testToken:local": "hardhat ignition deploy ignition/modules/TestToken.ts --network localhost"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ignition": "3.0.0",
     "@nomicfoundation/hardhat-toolbox-viem": "5.0.0",
     "@types/node": "24.7.2",
+    "dotenv": "17.2.3",
     "forge-std": "github:foundry-rs/forge-std#v1.9.4",
     "hardhat": "3.0.7",
     "solhint": "6.0.1",
