@@ -12,6 +12,19 @@
       "description": "Producer with 6 kW solar panels and 10 kWh battery storage"
     },
     {
+      "id": "pietro",
+      "name": "Pietro Bianchi",
+      "type": "consumer",
+      "wallet_address": "0x2345678901234567890123456789012345678901",
+      "pyusd_balance": 150.0,
+      "solar_capacity_kwh": 0,
+      "battery_capacity_kwh": 0,
+      "battery_initial_level_kwh": 0,
+      "ev_battery_kwh": 60.0,
+      "ev_charge_needed_kwh": 20.0,
+      "description": "Consumer with electric vehicle needing 20 kWh charge"
+    },
+    {
       "id": "lucia",
       "name": "Lucia Verdi",
       "type": "prosumer",
