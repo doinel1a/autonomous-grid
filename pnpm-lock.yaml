@@ -50,6 +50,9 @@ importers:
       dotenv:
         specifier: 17.2.3
         version: 17.2.3
+      papaparse:
+        specifier: 5.5.3
+        version: 5.5.3
       viem:
         specifier: 2.38.2
         version: 2.38.2(bufferutil@4.0.9)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.1.12)
@@ -60,6 +63,9 @@ importers:
       '@types/node':
         specifier: 24.7.2
         version: 24.7.2
+      '@types/papaparse':
+        specifier: 5.3.16
+        version: 5.3.16
       tsx:
         specifier: 4.20.6
         version: 4.20.6
@@ -2335,6 +2341,9 @@ packages:
 
   '@types/node@24.7.2':
     resolution: {integrity: sha512-/NbVmcGTP+lj5oa4yiYxxeBjRivKQ5Ns1eSZeB99ExsEQ6rX5XYU1Zy/gGxY/ilqtD4Etx9mKyrPxZRetiahhA==}
+
+  '@types/papaparse@5.3.16':
+    resolution: {integrity: sha512-T3VuKMC2H0lgsjI9buTB3uuKj3EMD2eap1MOuEQuBQ44EnDx/IkGhU6EwiTf9zG3za4SKlmwKAImdDKdNnCsXg==}
 
   '@types/qrcode@1.5.5':
     resolution: {integrity: sha512-CdfBi/e3Qk+3Z/fXYShipBT13OJ2fDO2Q2w5CIP5anLTLIndQG9z6P1cnm+8zCWSpm5dnxMFd/uREtb0EXuQzg==}
@@ -5095,6 +5104,9 @@ packages:
 
   package-manager-detector@1.4.1:
     resolution: {integrity: sha512-dSMiVLBEA4XaNJ0PRb4N5cV/SEP4BWrWZKBmfF+OUm2pQTiZ6DDkKeWaltwu3JRhLoy59ayIkJ00cx9K9CaYTg==}
+
+  papaparse@5.5.3:
+    resolution: {integrity: sha512-5QvjGxYVjxO59MGU2lHVYpRWBBtKHnlIAcSe1uNFCkkptUh63NFRj0FJQm7nR67puEruUci/ZkjmEFrjCAyP4A==}
 
   parent-module@1.0.1:
     resolution: {integrity: sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==}
@@ -9369,6 +9381,10 @@ snapshots:
     dependencies:
       undici-types: 7.14.0
 
+  '@types/papaparse@5.3.16':
+    dependencies:
+      '@types/node': 24.7.2
+
   '@types/qrcode@1.5.5':
     dependencies:
       '@types/node': 24.7.2
@@ -12854,6 +12870,8 @@ snapshots:
       semver: 7.7.3
 
   package-manager-detector@1.4.1: {}
+
+  papaparse@5.5.3: {}
 
   parent-module@1.0.1:
     dependencies:

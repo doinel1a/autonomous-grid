@@ -1,0 +1,33 @@
+{
+  "users": [
+    {
+      "id": "maria",
+      "name": "Maria Rossi",
+      "type": "producer",
+      "wallet_address": "0x1234567890123456789012345678901234567890",
+      "pyusd_balance": 100.0,
+      "solar_capacity_kwh": 6.0,
+      "battery_capacity_kwh": 10.0,
+      "battery_initial_level_kwh": 8.5,
+      "description": "Producer with 6 kW solar panels and 10 kWh battery storage"
+    },
+    {
+      "id": "lucia",
+      "name": "Lucia Verdi",
+      "type": "prosumer",
+      "wallet_address": "0x3456789012345678901234567890123456789012",
+      "pyusd_balance": 120.0,
+      "solar_capacity_kwh": 3.5,
+      "battery_capacity_kwh": 8.0,
+      "battery_initial_level_kwh": 6.5,
+      "description": "Prosumer with 3.5 kW solar panels and 8 kWh battery, both buyer and seller"
+    }
+  ],
+  "simulation_config": {
+    "start_time": "2025-01-15T00:00:00",
+    "duration_hours": 24,
+    "interval_minutes": 15,
+    "grid_discount_percentage": 15,
+    "vpp_transaction_fee_percentage": 2
+  }
+}
