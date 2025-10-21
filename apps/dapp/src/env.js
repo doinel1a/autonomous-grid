@@ -1,5 +1,3 @@
-/* eslint-disable unicorn/prevent-abbreviations */
-
 import { createEnv } from '@t3-oss/env-nextjs';
 import { z } from 'zod';
 
@@ -19,6 +17,7 @@ export const env = createEnv({
    */
   server: {
     // SERVER_VAR: z.string(),
+    DATABASE_URL: z.url(),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development')
   },
 
@@ -30,6 +29,7 @@ export const env = createEnv({
     // client
     NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID,
     // server
+    DATABASE_URL: process.env.DATABASE_URL,
     NODE_ENV: process.env.NODE_ENV
   },
   /**
