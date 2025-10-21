@@ -8,8 +8,6 @@ import type { PropsWithChildren } from 'react';
 
 import { Analytics } from '@vercel/analytics/react';
 
-import Footer from '@/components/footer';
-import GithubCorner from '@/components/github-corner';
 import WithSupportedChains from '@/components/hoc/with-supported-chains';
 import Navbar from '@/components/navbar';
 import RootProvider from '@/components/providers/root';
@@ -40,12 +38,6 @@ export default function RootLayout({ children }: Readonly<TRootLayout>) {
             <div className='grid min-h-dvh grid-rows-[auto_1fr_auto]'>
               <Navbar />
               {children}
-              <Footer />
-
-              <GithubCorner
-                title='Get started on GitHub'
-                url='https://github.com/doinel1a/next-ts-web3-evm'
-              />
             </div>
           </WithSupportedChains>
 

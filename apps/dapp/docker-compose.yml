@@ -1,0 +1,21 @@
+services:
+  db:
+    container_name: ag_db
+    image: postgres:17
+    environment:
+      POSTGRES_DB: db_v1
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: user_password
+    ports:
+      - '5432:5432'
+    volumes:
+      - ag_db_data:/var/lib/postgresql/data
+    networks:
+      - ag_db_network
+
+volumes:
+  ag_db_data:
+
+networks:
+  ag_db_network:
+    driver: bridge
