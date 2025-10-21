@@ -8,6 +8,13 @@
       "when": 1761041717077,
       "tag": "0000_warm_starhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1761041804770,
+      "tag": "0001_fine_talon",
+      "breakpoints": true
     }
   ]
 }
