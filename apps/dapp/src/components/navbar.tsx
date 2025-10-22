@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { Skeleton } from '@heroui/skeleton';
+import { Zap } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const ThemeToggle = dynamic(() => import('./ui/theme-toggle'), {
@@ -12,10 +13,13 @@ const Wallet = dynamic(() => import('./wallet'), {
 
 export default function Navbar() {
   return (
-    <header className='border-border flex h-16 w-full items-center justify-between border-b px-5'>
-      <span className='text-lg font-black'>Template</span>
+    <header className='flex w-full items-center justify-between px-2.5 pt-2.5'>
+      <div className='gap-x- flex items-end gap-x-0.5'>
+        <Zap className='text-muted-foreground size-9 fill-yellow-400' />
+        <span className='text-lg font-bold'>Autonomous Grid</span>
+      </div>
 
-      <div className='flex items-center gap-x-5 pr-20'>
+      <div className='flex items-center gap-x-2.5'>
         <Wallet className='w-32' />
         <ThemeToggle />
       </div>
