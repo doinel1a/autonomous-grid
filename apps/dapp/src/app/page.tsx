@@ -1,11 +1,15 @@
 import React from 'react';
 
-import Counter from '@/components/counter';
+import { api } from '../server/trpc';
+import WizardChat from './_components/chat/wizard';
 
-export default function HomePage() {
+export default async function HomePage() {
+  const user = await api.users.getByAddress({ address: '0x123' });
+  console.log('user', user);
+
   return (
-    <main className='flex h-full w-full flex-col items-center justify-center'>
-      <Counter />
+    <main className='flex h-full w-full overflow-hidden px-2.5 pt-2.5'>
+      <WizardChat />
     </main>
   );
 }

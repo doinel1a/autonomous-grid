@@ -22,6 +22,8 @@
     "db-danger:reset": "tsx --env-file=.env drizzle/seeders/reset.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai": "2.0.52",
+    "@ai-sdk/react": "2.0.76",
     "@heroui/button": "2.2.27",
     "@heroui/skeleton": "2.2.17",
     "@heroui/system": "2.4.23",
@@ -41,6 +43,7 @@
     "@trpc/react-query": "11.6.0",
     "@trpc/server": "11.6.0",
     "@vercel/analytics": "1.5.0",
+    "ai": "5.0.70",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "drizzle-orm": "0.44.6",

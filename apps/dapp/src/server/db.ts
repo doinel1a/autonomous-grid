@@ -1,3 +1,4 @@
+import { energyProfilesSchema } from '~/drizzle/schemas/energy-profiles';
 import { usersSchema } from '~/drizzle/schemas/users';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import postgres from 'pg';
@@ -19,6 +20,7 @@ if (env.NODE_ENV !== 'production') {
 
 export const db = drizzle(conn, {
   schema: {
-    usersSchema
+    usersSchema,
+    energyProfilesSchema
   }
 });
