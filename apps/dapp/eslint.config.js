@@ -71,7 +71,7 @@ export default tseslint.config(
             env: true,
             ctx: true
           },
-          ignore: [/db/i, /params/i]
+          ignore: [/db/i, /params/i, /ev/i]
         }
       ]
     }
