@@ -35,7 +35,7 @@ export default function RootLayout({ children }: Readonly<TRootLayout>) {
       <body>
         <RootProvider>
           <WithSupportedChains>
-            <div className='grid min-h-dvh grid-rows-[auto_1fr_auto]'>
+            <div className='grid h-dvh max-h-dvh grid-rows-[auto_1fr_auto]'>
               <Navbar />
               {children}
             </div>
