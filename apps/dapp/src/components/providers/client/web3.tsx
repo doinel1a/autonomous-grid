@@ -13,12 +13,13 @@ import {
 } from '@rainbow-me/rainbowkit';
 import { ledgerWallet, trustWallet } from '@rainbow-me/rainbowkit/wallets';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { useTheme } from 'next-themes';
 import { WagmiProvider } from 'wagmi';
 import { mainnet, sepolia } from 'wagmi/chains';
 
 import { env } from '@/env';
+
+// import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 const { wallets: defaultWallets } = getDefaultWallets();
 
@@ -56,7 +57,7 @@ export default function Web3Provider({ children }: Readonly<TWeb3Provider>) {
         >
           {children}
 
-          <ReactQueryDevtools initialIsOpen={false} />
+          {/* <ReactQueryDevtools initialIsOpen={false} /> */}
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
