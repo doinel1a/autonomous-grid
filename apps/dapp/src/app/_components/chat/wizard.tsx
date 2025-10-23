@@ -21,6 +21,8 @@ export default function WizardChat() {
     })
   });
 
+  console.log('CLIENT - All messages', messages);
+
   const onChatSubmit = () => {
     void sendMessage({ text: input });
   };
