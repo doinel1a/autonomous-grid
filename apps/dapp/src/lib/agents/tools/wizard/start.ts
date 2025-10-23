@@ -1,10 +1,12 @@
-import { assistantName } from '~/src/lib/constants/shared';
 import { tool } from 'ai';
 import z from 'zod';
 
+import { assistantName } from '@/lib/constants/shared';
+import { address } from '@/lib/schemas/shared';
+
 export const startWizardTool = tool({
   description: 'Start the energy data wizard and show the welcome message to the user',
-  inputSchema: z.object({ address: z.string().describe("User's Ethereum wallet address") }),
+  inputSchema: z.object({ address: address() }),
   execute: async ({ address }) => {
     console.log('SERVER - Address', address);
 

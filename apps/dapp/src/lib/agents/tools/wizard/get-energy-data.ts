@@ -1,10 +1,12 @@
 import { tool } from 'ai';
 import z from 'zod';
 
+import { energyProfile } from '@/lib/schemas/shared';
+
 export const getEnergyDataTool = tool({
   description: 'Show the energy data collection form based on the user energy profile type',
   inputSchema: z.object({
-    energyProfile: z.enum(['consumer', 'producer', 'prosumer']).describe('The type of energy user')
+    energyProfile
   }),
   execute: async ({ energyProfile }) => {
     console.log('SERVER - energyProfile:', energyProfile);

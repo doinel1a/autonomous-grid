@@ -3,14 +3,15 @@
 import { tool } from 'ai';
 import z from 'zod';
 
+import { address, energyProfile } from '@/lib/schemas/shared';
 import { api } from '@/server/trpc';
 
 export const saveEnergyDataTool = tool({
   description:
     'Save the user energy profile with all collected data based on their profile type. Extract the numerical values from the user message.',
   inputSchema: z.object({
-    address: z.string().describe('The user address from the chat context'),
-    energyProfile: z.enum(['consumer', 'producer', 'prosumer']).describe('The type of energy user'),
+    address: address('The user address from the chat context'),
+    energyProfile,
     production: z
       .number()
       .optional()
