@@ -5,6 +5,7 @@
 import type { TEnergyProfile } from '@/lib/constants/shared';
 import type { TSendMessage } from '@/lib/types/shared';
 import type { UIMessage } from '@ai-sdk/react';
+import type { Address } from 'viem';
 
 import { User, Zap } from 'lucide-react';
 
@@ -13,6 +14,7 @@ import { cn } from '@/lib/utils';
 
 import EnergyProfileForm from '../generative-uis/energy-profile-form';
 import SelectEnergyProfile from '../generative-uis/select-energy-profile';
+import SetAgentAllowance from '../generative-uis/set-agent-allowance';
 import { Markdown } from './markdown';
 
 type TMessage = {
@@ -22,7 +24,6 @@ type TMessage = {
 
 export default function Message({ message, sendMessage }: Readonly<TMessage>) {
   const isAssistant = message.role === 'assistant';
-  console.log('mes', message.parts);
 
   return (
     <div
@@ -50,6 +51,19 @@ export default function Message({ message, sendMessage }: Readonly<TMessage>) {
                 key={index}
                 // @ts-expect-error No problem
                 energyProfile={part.input.energyProfile as TEnergyProfile}
+                sendMessage={sendMessage}
+              />
+            ) : null
+          ) : part.type === partToolName.wizard.saveEnergyData ? (
+            part.state === 'input-available' ? (
+              <span key={index}>Loading...</span>
+            ) : part.state === 'output-available' ? (
+              <SetAgentAllowance
+                key={index}
+                // @ts-expect-error No problem
+                userAddress={part.input.address as Address}
+                // @ts-expect-error No problem
+                userEnergyProfile={part.input.energyProfile as TEnergyProfile}
                 sendMessage={sendMessage}
               />
             ) : null
