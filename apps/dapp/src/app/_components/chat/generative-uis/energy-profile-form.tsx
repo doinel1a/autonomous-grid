@@ -9,16 +9,12 @@ import type { TSendMessage } from '@/lib/types/shared';
 import { Button } from '@heroui/button';
 
 import { Checkbox as SCN_Checkbox } from '@/components/ui/checkbox';
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-  InputGroupText
-} from '@/components/ui/input-group';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { energyProfile as energyProfileValue, unit } from '@/lib/constants/shared';
 import { cn } from '@/lib/utils';
+
+import Input from './shared/input';
 
 type TEnergyProfileForm = {
   energyProfile: TEnergyProfile;
@@ -169,36 +165,6 @@ export default function EnergyProfileForm({
 
       <Separator className='my-2.5' />
     </div>
-  );
-}
-
-type TInput = {
-  value: string;
-  placeholder: string;
-  endAddon?: string;
-  disabled: boolean;
-  setValue: (value: string) => void;
-};
-
-function Input({ value, placeholder, endAddon, disabled, setValue }: Readonly<TInput>) {
-  return (
-    <InputGroup>
-      <InputGroupInput
-        value={value}
-        placeholder={placeholder}
-        className='placeholder:text-sm'
-        disabled={disabled}
-        onChange={(event) => {
-          setValue(event.target.value);
-        }}
-      />
-
-      {endAddon && (
-        <InputGroupAddon align='inline-end'>
-          <InputGroupText>{endAddon}</InputGroupText>
-        </InputGroupAddon>
-      )}
-    </InputGroup>
   );
 }
 
