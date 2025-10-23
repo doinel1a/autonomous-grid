@@ -1,5 +1,12 @@
+import { batteryStoragesSchema } from '~/drizzle/schemas/battery-storages';
+import { consumerEnergyDataSchema } from '~/drizzle/schemas/consumer-energy-data';
+import { electricVehiclesSchema } from '~/drizzle/schemas/electric-vehicles';
 import { energyProfilesSchema } from '~/drizzle/schemas/energy-profiles';
+import { energyReadingsSchema } from '~/drizzle/schemas/energy-readings';
+import { producerEnergyDataSchema } from '~/drizzle/schemas/producer-energy-data';
+import { prosumerEnergyDataSchema } from '~/drizzle/schemas/prosumer-energy-data';
 import { usersSchema } from '~/drizzle/schemas/users';
+import { vppAggregatedDataSchema } from '~/drizzle/schemas/vpp-aggregated-data';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import postgres from 'pg';
 
@@ -21,6 +28,13 @@ if (env.NODE_ENV !== 'production') {
 export const db = drizzle(conn, {
   schema: {
     usersSchema,
-    energyProfilesSchema
+    energyProfilesSchema,
+    consumerEnergyDataSchema,
+    producerEnergyDataSchema,
+    prosumerEnergyDataSchema,
+    batteryStoragesSchema,
+    electricVehiclesSchema,
+    energyReadingsSchema,
+    vppAggregatedDataSchema
   }
 });
