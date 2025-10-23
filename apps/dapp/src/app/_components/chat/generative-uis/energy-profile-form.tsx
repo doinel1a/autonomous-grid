@@ -112,7 +112,13 @@ export default function EnergyProfileForm({
               label='I have a battery for energy storage'
               checked={hasBattery}
               disabled={submitted}
-              setChecked={setHasBattery}
+              setChecked={(checked: boolean) => {
+                if (!checked) {
+                  setBatteryCapacity('');
+                }
+
+                setHasBattery(checked);
+              }}
             />
 
             {hasBattery && (
@@ -137,7 +143,13 @@ export default function EnergyProfileForm({
               label='I have an electric vehicle'
               checked={hasEV}
               disabled={submitted}
-              setChecked={setHasEV}
+              setChecked={(checked: boolean) => {
+                if (!checked) {
+                  setEVBatteryCapacity('');
+                }
+
+                setHasEV(checked);
+              }}
             />
 
             {hasEV && (
