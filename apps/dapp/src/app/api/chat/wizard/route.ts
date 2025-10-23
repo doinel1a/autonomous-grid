@@ -1,12 +1,11 @@
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-
 import type { UIMessage } from 'ai';
 
-import { convertToModelMessages, stepCountIs, streamText, tool } from 'ai';
-import { z } from 'zod';
+import { convertToModelMessages, stepCountIs, streamText } from 'ai';
 
-import { assistantName, model, toolName } from '@/lib/constants/shared';
-import { api } from '@/server/trpc';
+import { getEnergyDataTool } from '@/lib/agents/tools/wizard/get-energy-data';
+import { saveEnergyDataTool } from '@/lib/agents/tools/wizard/save-energy-data';
+import { startWizardTool } from '@/lib/agents/tools/wizard/start';
+import { model, toolName } from '@/lib/constants/shared';
 
 type TBody = {
   messages: UIMessage[];
@@ -34,142 +33,6 @@ const WIZARD_SYSTEM_PROMPT = `
 
   Be friendly, clear, and patient. The form will handle data collection, so you just need to guide the flow.
 `;
-
-const startWizardTool = tool({
-  description: 'Start the energy data wizard and show the welcome message to the user',
-  inputSchema: z.object({ address: z.string().describe("User's Ethereum wallet address") }),
-  execute: async ({ address }) => {
-    console.log('SERVER - Address', address);
-
-    return {
-      message: `
-        Welcome in **AutonomousGrid**!
-
-        I'm ${assistantName} ⚡, your personal assistan.
-
-        I'll guide you through a brief wizard to set-up your account and understand your energy situation.
-
-        Let's get started! Please tell me what type of user you are; select an option from the list above.
-      `
-    };
-  }
-});
-
-const getEnergyDataTool = tool({
-  description: 'Show the energy data collection form based on the user energy profile type',
-  inputSchema: z.object({
-    energyProfile: z.enum(['consumer', 'producer', 'prosumer']).describe('The type of energy user')
-  }),
-  execute: async ({ energyProfile }) => {
-    console.log('SERVER - energyProfile:', energyProfile);
-
-    const formInstructions = {
-      consumer:
-        'Please provide your daily energy consumption and let me know if you have an electric vehicle.',
-      producer:
-        'Please provide your daily energy production and let me know if you have a storage battery.',
-      prosumer:
-        'Please provide your daily energy production and consumption, and let me know if you have a storage battery and/or an electric vehicle.'
-    };
-
-    return {
-      message: `Perfect! ${formInstructions[energyProfile]} Fill in the form below to continue.`
-    };
-  }
-});
-
-const saveEnergyDataTool = tool({
-  description:
-    'Save the user energy profile with all collected data based on their profile type. Extract the numerical values from the user message.',
-  inputSchema: z.object({
-    address: z.string().describe('The user address from the chat context'),
-    energyProfile: z.enum(['consumer', 'producer', 'prosumer']).describe('The type of energy user'),
-    production: z
-      .number()
-      .optional()
-      .describe('Daily energy production in kWh (only for producer and prosumer)'),
-    consumption: z
-      .number()
-      .optional()
-      .describe('Daily energy consumption in kWh (only for consumer and prosumer)'),
-    storageBatteryCapacity: z
-      .number()
-      .optional()
-      .describe(
-        'Storage battery capacity in kWh (only for producer and prosumer if they have one)'
-      ),
-    evBatteryCapacity: z
-      .number()
-      .optional()
-      .describe('EV battery capacity in kWh (only for consumer and prosumer if they have one)')
-  }),
-  execute: async ({
-    address,
-    energyProfile,
-    production,
-    consumption,
-    storageBatteryCapacity,
-    evBatteryCapacity
-  }) => {
-    console.log('SERVER - Energy data:', {
-      address,
-      energyProfile,
-      production,
-      consumption,
-      storageBatteryCapacity,
-      evBatteryCapacity
-    });
-
-    const summaryParts = [
-      `**Energy rofile:** ${energyProfile.charAt(0).toUpperCase() + energyProfile.slice(1)}`
-    ];
-
-    if (production !== undefined) {
-      summaryParts.push(`**Daily Production:** ${production} kWh`);
-    }
-
-    if (consumption !== undefined) {
-      summaryParts.push(`**Daily Consumption:** ${consumption} kWh`);
-    }
-
-    if (storageBatteryCapacity !== undefined) {
-      summaryParts.push(`**Storage Battery Capacity:** ${storageBatteryCapacity} kWh`);
-    }
-
-    if (evBatteryCapacity !== undefined) {
-      summaryParts.push(`**EV Battery Capacity:** ${evBatteryCapacity} kWh`);
-    }
-
-    try {
-      await api.users.create({
-        address,
-        energyProfile,
-        production,
-        consumption,
-        storageBatteryCapacity,
-        evBatteryCapacity
-      });
-    } catch (error) {
-      console.error('SERVER ERROR: Failed to create user', error);
-      return {
-        success: false,
-        message: `Your energy profile has not been saved. Please try again later. Error: ${error}`
-      };
-    }
-
-    return {
-      success: true,
-      message: `Great! Your energy profile has been saved successfully!\n\n**Summary:**\n${summaryParts.join('\n')}\n\nYou're all set! You can now start using AutonomousGrid to manage your energy.`,
-      data: {
-        energyProfile,
-        production,
-        consumption,
-        storageBatteryCapacity,
-        evBatteryCapacity
-      }
-    };
-  }
-});
 
 export async function POST(request: Request) {
   const body = (await request.json()) as TBody;
