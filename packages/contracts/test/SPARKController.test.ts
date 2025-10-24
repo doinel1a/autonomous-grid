@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+
 import { network } from 'hardhat';
 
 /**
@@ -27,7 +28,10 @@ describe('SPARKController', async function () {
 
   describe('Deployment', function () {
     it('should deploy with correct initial state', async function () {
-      const controller = await viem.deployContract('SPARKController', [mockTokenAddress, mockOwnerAddress]);
+      const controller = await viem.deployContract('SPARKController', [
+        mockTokenAddress,
+        mockOwnerAddress
+      ]);
 
       const owner = await controller.read.owner();
       const tokenAddress = await controller.read.SPARK_TOKEN_ADDRESS();
@@ -98,11 +102,11 @@ describe('SPARKController', async function () {
       assert.equal(total.toString(), '0');
     });
 
-    it('should return zero kWh for producer with no production', async function () {
+    it('should return zero Wh for producer with no production', async function () {
       const controller = await viem.deployContract('SPARKController', [mockTokenAddress]);
       const testAddress = '0x1234567890123456789012345678901234567890';
 
-      const totalKwh = await controller.read.getTotalProductionInKwh([testAddress]);
+      const totalKwh = await controller.read.getTotalProductionInWh([testAddress]);
       assert.equal(totalKwh.toString(), '0');
     });
 
@@ -133,11 +137,7 @@ describe('SPARKController', async function () {
       const controller = await viem.deployContract('SPARKController', [mockTokenAddress]);
       const testAddress = '0x1234567890123456789012345678901234567890';
 
-      const records = await controller.read.getProductionRecordsPaginated([
-        testAddress,
-        0n,
-        10n
-      ]);
+      const records = await controller.read.getProductionRecordsPaginated([testAddress, 0n, 10n]);
       assert.equal(records.length, 0);
     });
 
@@ -168,11 +168,7 @@ describe('SPARKController', async function () {
       const startTime = now - 86400n; // 24 hours ago
       const endTime = now;
 
-      const total = await controller.read.getProductionInRange([
-        testAddress,
-        startTime,
-        endTime
-      ]);
+      const total = await controller.read.getProductionInRange([testAddress, startTime, endTime]);
       assert.equal(total.toString(), '0');
     });
   });

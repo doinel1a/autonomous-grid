@@ -24,11 +24,7 @@ import { signRecordProduction } from './utils/signature.js';
  *   npm run mint:spark
  *   Then follow the prompts or set environment variables
  *
- * Environment variables (optional):
- *   PRODUCER_ADDRESS - The producer's address
- *   KWH_AMOUNT - The kWh amount to mint
- *
- * Economics: 1000 SPARK = 1 kWh
+ * Economics: 1 SPARK = 1 Wh
  */
 async function mintSpark() {
   console.log('⚡ Minting SPARK tokens and recording production...\n');
@@ -58,14 +54,14 @@ async function mintSpark() {
 
   // Get parameters from environment or use defaults for testing
   const producerAddress = process.env.PRODUCER_ADDRESS || accountId.toString();
-  const kwhAmount = process.env.KWH_AMOUNT ? parseFloat(process.env.KWH_AMOUNT) : 10;
+  const whAmount = 532;
 
   console.log(`📋 Configuration:`);
   console.log(`   Network: ${network}`);
   console.log(`   Controller: ${controllerAddress}`);
   console.log(`   Producer: ${producerAddress}`);
-  console.log(`   kWh Amount: ${kwhAmount} kWh`);
-  console.log(`   SPARK Amount: ${kwhAmount * 1000} SPARK\n`);
+  console.log(`   Wh Amount: ${whAmount} Wh`);
+  console.log(`   SPARK Amount: ${whAmount} SPARK\n`);
 
   // Initialize Hedera client
   const client = network === 'mainnet' ? Client.forMainnet() : Client.forTestnet();
@@ -98,7 +94,7 @@ async function mintSpark() {
     // Generate signature
     const signature = await signRecordProduction(
       evmProducerAddress,
-      Math.floor(kwhAmount),
+      Math.floor(whAmount),
       deadline,
       privateKeyHex
     );
@@ -118,7 +114,7 @@ async function mintSpark() {
         'recordProductionAndMint',
         new ContractFunctionParameters()
           .addAddress(evmProducerAddress)
-          .addUint256(Math.floor(kwhAmount)) // kWh as integer
+          .addUint256(whAmount) // Wh as integer
           .addUint256(deadline) // Signature deadline
           .addBytes(ethers.getBytes(signature)) // Signature bytes
       )
@@ -134,8 +130,8 @@ async function mintSpark() {
     console.log(`   Transaction ID: ${contractExecTx.transactionId.toString()}`);
     console.log(`   Status: ${receipt.status.toString()}`);
     console.log(`   Producer: ${producerAddress}`);
-    console.log(`   Energy Produced: ${kwhAmount} kWh`);
-    console.log(`   SPARK Minted: ${kwhAmount * 1000} SPARK`);
+    console.log(`   Energy Produced: ${whAmount} Wh`);
+    console.log(`   SPARK Minted: ${whAmount} SPARK`);
 
     // Query token balance (if possible)
     try {
@@ -146,7 +142,7 @@ async function mintSpark() {
       const sparkBalance = balance.tokens?.get(tokenId);
       if (sparkBalance) {
         console.log(`   Treasury SPARK Balance: ${sparkBalance.toString()} SPARK`);
-        console.log(`   Energy Equivalent: ${Number(sparkBalance) / 1000} kWh`);
+        console.log(`   Energy Equivalent: ${sparkBalance} Wh`);
       }
     } catch (balanceError) {
       console.log('   (Balance query skipped)');

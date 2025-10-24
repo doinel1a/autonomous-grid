@@ -8,7 +8,7 @@ import "./interfaces/IHederaTokenService.sol";
  * @notice Controller for SPARK token production tracking and management
  * @dev Manages minting, burning, and tracking of solar energy production
  *
- * Token Economics: 1000 SPARK = 1 kWh of solar energy
+ * Token Economics: 1 SPARK = 1 Wh of solar energy (with 8 decimals precision)
  *
  * Features:
  * - Dynamic mint/burn of SPARK tokens
@@ -24,8 +24,8 @@ contract SPARKController {
   /// @notice HTS response codes
   int32 constant HTS_SUCCESS = 22;
 
-  /// @notice Conversion rate: 1000 SPARK = 1 kWh
-  uint256 public constant SPARK_PER_KWH = 1000;
+  /// @notice Conversion rate: 1 SPARK = 1 Wh
+  uint256 public constant SPARK_PER_WH = 1;
 
   /// @notice Token decimals (SPARK has 8 decimals due to uint64 limit in HTS mintToken)
   uint256 public constant DECIMALS = 8;
@@ -80,14 +80,14 @@ contract SPARKController {
    * @notice Emitted when production is recorded and tokens are minted
    * @param producer The producer address
    * @param amount The amount of SPARK tokens minted
-   * @param kwh The kWh equivalent
+   * @param wh The Wh equivalent
    * @param timestamp The timestamp of production
    * @param recordId The global record ID
    */
   event ProductionRecorded(
     address indexed producer,
     uint256 amount,
-    uint256 kwh,
+    uint256 wh,
     uint256 timestamp,
     uint256 indexed recordId
   );
@@ -213,27 +213,27 @@ contract SPARKController {
   /**
    * @notice Records energy production and mints corresponding SPARK tokens
    * @param producer The producer address
-   * @param kwh The amount of energy produced in kWh
+   * @param wh The amount of energy produced in Wh (Watt-hours)
    * @param deadline Signature expiration timestamp
    * @param signature Signature from the owner authorizing this operation
    *
    * @dev Uses signature verification instead of msg.sender check (Hedera compatible)
-   * @dev Converts kWh to SPARK tokens (1 kWh = 1000 SPARK)
+   * @dev Converts Wh to SPARK tokens (1 Wh = 1 SPARK)
    * @dev Updates all tracking structures (records, aggregates)
    * @dev Emits ProductionRecorded and TokensMinted events
    */
   function recordProductionAndMint(
     address producer,
-    uint256 kwh,
+    uint256 wh,
     uint256 deadline,
     bytes memory signature
-  ) external validAddress(producer) validAmount(kwh) {
+  ) external validAddress(producer) validAmount(wh) {
     // Verify signature from owner
-    _verifySignature(producer, kwh, deadline, signature);
+    _verifySignature(producer, wh, deadline, signature);
 
-    // Calculate SPARK amount (1 kWh = 1000 SPARK)
+    // Calculate SPARK amount (1 Wh = 1 SPARK)
     // Multiply by 10^8 to account for token decimals
-    uint256 sparkAmount = kwh * SPARK_PER_KWH * (10 ** DECIMALS);
+    uint256 sparkAmount = wh * (10 ** DECIMALS);
 
     // Mint tokens via HTS
     _mintTokens(sparkAmount);
@@ -268,7 +268,7 @@ contract SPARKController {
     daily.totalAmount += sparkAmount;
     daily.recordCount += 1;
 
-    emit ProductionRecorded(producer, sparkAmount, kwh, timestamp, recordId);
+    emit ProductionRecorded(producer, sparkAmount, wh, timestamp, recordId);
   }
 
   /**
@@ -288,7 +288,7 @@ contract SPARKController {
   /**
    * @notice Batch record multiple productions and mint tokens
    * @param producers Array of producer addresses
-   * @param kwhAmounts Array of kWh amounts corresponding to each producer
+   * @param whAmounts Array of Wh amounts corresponding to each producer
    *
    * @dev Only callable by owner
    * @dev Arrays must have the same length
@@ -296,16 +296,16 @@ contract SPARKController {
    */
   function batchRecordProduction(
     address[] calldata producers,
-    uint256[] calldata kwhAmounts
+    uint256[] calldata whAmounts
   ) external onlyOwner {
-    if (producers.length != kwhAmounts.length) revert InvalidArrayLength();
+    if (producers.length != whAmounts.length) revert InvalidArrayLength();
     if (producers.length == 0) revert InvalidAmount();
 
     for (uint256 i = 0; i < producers.length; i++) {
       if (producers[i] == address(0)) revert InvalidAddress();
-      if (kwhAmounts[i] == 0) revert InvalidAmount();
+      if (whAmounts[i] == 0) revert InvalidAmount();
 
-      uint256 sparkAmount = kwhAmounts[i] * SPARK_PER_KWH * (10 ** DECIMALS);
+      uint256 sparkAmount = whAmounts[i] * (10 ** DECIMALS);
       uint256 timestamp = block.timestamp;
 
       // Mint tokens
@@ -335,7 +335,7 @@ contract SPARKController {
       daily.totalAmount += sparkAmount;
       daily.recordCount += 1;
 
-      emit ProductionRecorded(producers[i], sparkAmount, kwhAmounts[i], timestamp, recordId);
+      emit ProductionRecorded(producers[i], sparkAmount, whAmounts[i], timestamp, recordId);
     }
   }
 
@@ -351,12 +351,21 @@ contract SPARKController {
   }
 
   /**
+   * @notice Gets total production in Wh for a producer
+   * @param producer The producer address
+   * @return Total Wh produced
+   */
+  function getTotalProductionInWh(address producer) external view returns (uint256) {
+    return producerTotalProduction[producer] / (10 ** DECIMALS);
+  }
+
+  /**
    * @notice Gets total production in kWh for a producer
    * @param producer The producer address
    * @return Total kWh produced
    */
   function getTotalProductionInKwh(address producer) external view returns (uint256) {
-    return producerTotalProduction[producer] / SPARK_PER_KWH;
+    return producerTotalProduction[producer] / (10 ** DECIMALS) / 1000;
   }
 
   /**
@@ -519,21 +528,21 @@ contract SPARKController {
   }
 
   /**
-   * @notice Converts SPARK tokens (in smallest units) to kWh
+   * @notice Converts SPARK tokens (in smallest units) to Wh
    * @param sparkAmount Amount in SPARK tokens (smallest units)
-   * @return Amount in kWh
+   * @return Amount in Wh
    */
-  function sparkToKwh(uint256 sparkAmount) public pure returns (uint256) {
-    return sparkAmount / (SPARK_PER_KWH * (10 ** DECIMALS));
+  function sparkToWh(uint256 sparkAmount) public pure returns (uint256) {
+    return sparkAmount / (10 ** DECIMALS);
   }
 
   /**
-   * @notice Converts kWh to SPARK tokens (in smallest units)
-   * @param kwh Amount in kWh
+   * @notice Converts Wh to SPARK tokens (in smallest units)
+   * @param wh Amount in Wh
    * @return Amount in SPARK tokens (smallest units)
    */
-  function kwhToSpark(uint256 kwh) public pure returns (uint256) {
-    return kwh * SPARK_PER_KWH * (10 ** DECIMALS);
+  function whToSpark(uint256 wh) public pure returns (uint256) {
+    return wh * (10 ** DECIMALS);
   }
 
   // Signature Verification Functions
@@ -541,13 +550,13 @@ contract SPARKController {
   /**
    * @notice Verifies that a signature was created by the owner
    * @param producer The producer address
-   * @param kwh The kWh amount
+   * @param wh The Wh amount
    * @param deadline The deadline timestamp (must be in the future)
    * @param signature The signature bytes
    */
   function _verifySignature(
     address producer,
-    uint256 kwh,
+    uint256 wh,
     uint256 deadline,
     bytes memory signature
   ) internal view {
@@ -555,7 +564,7 @@ contract SPARKController {
     if (block.timestamp > deadline) revert SignatureExpired();
 
     // Create message hash
-    bytes32 messageHash = keccak256(abi.encodePacked(producer, kwh, deadline));
+    bytes32 messageHash = keccak256(abi.encodePacked(producer, wh, deadline));
     bytes32 ethSignedMessageHash = _getEthSignedMessageHash(messageHash);
 
     // Recover signer
@@ -609,15 +618,15 @@ contract SPARKController {
   /**
    * @notice Helper function to get the message hash for signing
    * @param producer The producer address
-   * @param kwh The kWh amount
+   * @param wh The Wh amount
    * @param deadline The deadline timestamp
    * @return The message hash
    */
   function getMessageHash(
     address producer,
-    uint256 kwh,
+    uint256 wh,
     uint256 deadline
   ) public pure returns (bytes32) {
-    return keccak256(abi.encodePacked(producer, kwh, deadline));
+    return keccak256(abi.encodePacked(producer, wh, deadline));
   }
 }

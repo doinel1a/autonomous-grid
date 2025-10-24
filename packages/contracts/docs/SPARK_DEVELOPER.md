@@ -99,7 +99,8 @@ function burnTokens(uint256 amount) external onlyOwner
 
 ```solidity
 function getTotalProduction(address producer) external view returns (uint256)
-function getTotalProductionInKwh(address producer) external view returns (uint256)
+function getTotalProductionInWh(address producer) external view returns (uint256)
+function getTotalProductionInkWh(address producer) external view returns (uint256)
 function getProductionRecords(address producer) external view returns (ProductionRecord[] memory)
 function getProductionRecordsPaginated(address producer, uint256 offset, uint256 limit) external view returns (ProductionRecord[] memory)
 function getDailyProduction(address producer, uint256 timestamp) external view returns (uint256 amount, uint256 count)
@@ -503,7 +504,7 @@ burnTokens(uint256 amount)
 
 // Queries
 getTotalProduction(address) → uint256
-getTotalProductionInKwh(address) → uint256
+getTotalProductionInWh(address) → uint256
 getProductionRecords(address) → ProductionRecord[]
 getProductionRecordsPaginated(address, uint256, uint256) → ProductionRecord[]
 getDailyProduction(address, uint256) → (uint256, uint256)
