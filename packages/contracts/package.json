@@ -15,7 +15,23 @@
     "setup:testToken:local": "hardhat run scripts/test-token-setup/local.ts",
     "setup:testToken:sepolia": "hardhat run scripts/test-token-setup/sepolia.ts",
     "deploy:testToken:local": "hardhat ignition deploy ignition/modules/TestToken.ts --network localhost",
-    "deploy:testToken:sepolia": "hardhat ignition deploy ignition/modules/TestToken.ts --network sepolia"
+    "deploy:testToken:sepolia": "hardhat ignition deploy ignition/modules/TestToken.ts --network sepolia",
+    "create:spark": "tsx scripts/hedera/create-spark-token.ts",
+    "query:spark": "tsx scripts/hedera/query-spark-info.ts",
+    "query:supply-key": "tsx scripts/hedera/query-supply-key.ts",
+    "test:signature": "tsx scripts/hedera/test-signature.ts",
+    "test:keys": "tsx scripts/hedera/test-keys.ts",
+    "fund:contract": "tsx scripts/hedera/fund-contract.ts",
+    "deploy:controller:testnet": "tsx scripts/hedera/deploy-spark-controller.ts",
+    "associate:token": "tsx scripts/hedera/associate-token.ts",
+    "transfer:supply-key": "tsx scripts/hedera/transfer-supply-key.ts",
+    "mint:spark": "tsx scripts/hedera/mint-spark.ts",
+    "burn:spark": "tsx scripts/hedera/burn-spark.ts",
+    "query:production": "tsx scripts/hedera/query-production.ts"
+  },
+  "dependencies": {
+    "@hashgraph/sdk": "2.75.0",
+    "ethers": "6.15.0"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ignition": "3.0.0",
@@ -25,6 +41,7 @@
     "forge-std": "github:foundry-rs/forge-std#v1.9.4",
     "hardhat": "3.0.7",
     "solhint": "6.0.1",
+    "tsx": "4.20.6",
     "typescript": "5.9.3",
     "viem": "2.30.0"
   }
