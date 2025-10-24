@@ -31,7 +31,8 @@
     "transfer:energy": "tsx scripts/hedera/transfer-energy.ts",
     "consume:energy": "tsx scripts/hedera/consume-energy.ts",
     "query:balance": "tsx scripts/hedera/query-balance.ts",
-    "query:transactions": "tsx scripts/hedera/query-transactions.ts"
+    "query:transactions": "tsx scripts/hedera/query-transactions.ts",
+    "query:eur-usd-price": "tsx scripts/hedera/query-eur-usd-price.ts"
   },
   "dependencies": {
     "@hashgraph/sdk": "2.75.0",

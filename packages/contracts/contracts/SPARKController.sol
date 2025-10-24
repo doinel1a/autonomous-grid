@@ -2,6 +2,8 @@
 pragma solidity ^0.8.28;
 
 import "./interfaces/IHederaTokenService.sol";
+import "./interfaces/IPyth.sol";
+import "./interfaces/PythStructs.sol";
 
 /**
  * @title SPARKController
@@ -23,6 +25,12 @@ contract SPARKController {
 
   /// @notice HTS response codes
   int32 constant HTS_SUCCESS = 22;
+
+  /// @notice Pyth Network EUR/USD price feed ID
+  bytes32 public constant EUR_USD_PRICE_FEED_ID = 0xa995d00bb36a63cef7fd2c287dc105fc8f3d93779f062f09551b0af3e81ec30b;
+
+  /// @notice Pyth oracle contract address
+  address public immutable PYTH_ORACLE_ADDRESS;
 
   /// @notice Conversion rate: 1 SPARK = 1 Wh
   uint256 public constant SPARK_PER_WH = 1;
@@ -219,9 +227,15 @@ contract SPARKController {
    * @notice Initializes the SPARKController contract
    * @param _sparkTokenAddress The address of the SPARK HTS token
    * @param _owner The address of the contract owner
+   * @param _pythOracleAddress The address of the Pyth oracle contract
    */
-  constructor(address _sparkTokenAddress, address _owner) validAddress(_sparkTokenAddress) validAddress(_owner) {
+  constructor(
+    address _sparkTokenAddress,
+    address _owner,
+    address _pythOracleAddress
+  ) validAddress(_sparkTokenAddress) validAddress(_owner) validAddress(_pythOracleAddress) {
     SPARK_TOKEN_ADDRESS = _sparkTokenAddress;
+    PYTH_ORACLE_ADDRESS = _pythOracleAddress;
     owner = _owner;
 
     emit OwnershipTransferred(address(0), _owner);
@@ -838,5 +852,59 @@ contract SPARKController {
     uint256 deadline
   ) public pure returns (bytes32) {
     return keccak256(abi.encodePacked(producer, wh, deadline));
+  }
+
+  // Pyth Oracle Functions
+
+  /**
+   * @notice Gets the current EUR/USD price from Pyth oracle
+   * @return price The EUR/USD price (scaled by 10^expo)
+   * @return expo The exponent for the price
+   * @return publishTime The timestamp when the price was published
+   *
+   * @dev Price needs to be interpreted as: actual_price = price * 10^expo
+   * @dev Example: If price = 105123456 and expo = -8, actual price = 1.05123456 USD per EUR
+   */
+  function getEurUsdPrice() public view returns (int64 price, int32 expo, uint publishTime) {
+    IPyth pyth = IPyth(PYTH_ORACLE_ADDRESS);
+    PythStructs.Price memory priceData = pyth.getPriceUnsafe(EUR_USD_PRICE_FEED_ID);
+
+    return (priceData.price, priceData.expo, priceData.publishTime);
+  }
+
+  /**
+   * @notice Gets the current EUR/USD price with confidence interval
+   * @return price The EUR/USD price (scaled by 10^expo)
+   * @return conf The confidence interval
+   * @return expo The exponent for the price
+   * @return publishTime The timestamp when the price was published
+   */
+  function getEurUsdPriceWithConfidence()
+    public
+    view
+    returns (int64 price, uint64 conf, int32 expo, uint publishTime)
+  {
+    IPyth pyth = IPyth(PYTH_ORACLE_ADDRESS);
+    PythStructs.Price memory priceData = pyth.getPriceUnsafe(EUR_USD_PRICE_FEED_ID);
+
+    return (priceData.price, priceData.conf, priceData.expo, priceData.publishTime);
+  }
+
+  /**
+   * @notice Gets EUR/USD price that is no older than specified age
+   * @param maxAge Maximum age of price in seconds
+   * @return price The EUR/USD price (scaled by 10^expo)
+   * @return expo The exponent for the price
+   * @return publishTime The timestamp when the price was published
+   *
+   * @dev Reverts if price is older than maxAge seconds
+   */
+  function getEurUsdPriceNoOlderThan(
+    uint maxAge
+  ) public view returns (int64 price, int32 expo, uint publishTime) {
+    IPyth pyth = IPyth(PYTH_ORACLE_ADDRESS);
+    PythStructs.Price memory priceData = pyth.getPriceNoOlderThan(EUR_USD_PRICE_FEED_ID, maxAge);
+
+    return (priceData.price, priceData.expo, priceData.publishTime);
   }
 }
