@@ -1,0 +1,623 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+import "./interfaces/IHederaTokenService.sol";
+
+/**
+ * @title SPARKController
+ * @notice Controller for SPARK token production tracking and management
+ * @dev Manages minting, burning, and tracking of solar energy production
+ *
+ * Token Economics: 1000 SPARK = 1 kWh of solar energy
+ *
+ * Features:
+ * - Dynamic mint/burn of SPARK tokens
+ * - Production tracking per producer
+ * - Hourly and daily aggregates
+ * - Query functions for analytics
+ * - Owner-only access control
+ */
+contract SPARKController {
+  /// @notice Hedera Token Service precompiled contract address
+  address constant HTS_PRECOMPILE = 0x0000000000000000000000000000000000000167;
+
+  /// @notice HTS response codes
+  int32 constant HTS_SUCCESS = 22;
+
+  /// @notice Conversion rate: 1000 SPARK = 1 kWh
+  uint256 public constant SPARK_PER_KWH = 1000;
+
+  /// @notice Token decimals (SPARK has 8 decimals due to uint64 limit in HTS mintToken)
+  uint256 public constant DECIMALS = 8;
+
+  /// @notice SPARK token address (HTS token)
+  address public immutable SPARK_TOKEN_ADDRESS;
+
+  /// @notice Contract owner (has exclusive mint/burn/record permissions)
+  address public owner;
+
+  /// @notice Production record structure
+  struct ProductionRecord {
+    address producer; // Producer address
+    uint256 amount; // Amount in SPARK tokens
+    uint256 timestamp; // Block timestamp
+  }
+
+  /// @notice Hourly aggregate structure
+  struct HourlyAggregate {
+    uint256 totalAmount; // Total SPARK produced in this hour
+    uint256 recordCount; // Number of production records
+  }
+
+  /// @notice Daily aggregate structure
+  struct DailyAggregate {
+    uint256 totalAmount; // Total SPARK produced in this day
+    uint256 recordCount; // Number of production records
+  }
+
+  /// @notice All production records (global)
+  ProductionRecord[] public allProductionRecords;
+
+  /// @notice Production records per producer
+  /// @dev producer => ProductionRecord[]
+  mapping(address => ProductionRecord[]) public producerRecords;
+
+  /// @notice Total production per producer
+  /// @dev producer => total SPARK amount
+  mapping(address => uint256) public producerTotalProduction;
+
+  /// @notice Hourly aggregates per producer
+  /// @dev producer => hourKey (timestamp / 3600) => HourlyAggregate
+  mapping(address => mapping(uint256 => HourlyAggregate)) public hourlyAggregates;
+
+  /// @notice Daily aggregates per producer
+  /// @dev producer => dayKey (timestamp / 86400) => DailyAggregate
+  mapping(address => mapping(uint256 => DailyAggregate)) public dailyAggregates;
+
+  // Events
+
+  /**
+   * @notice Emitted when production is recorded and tokens are minted
+   * @param producer The producer address
+   * @param amount The amount of SPARK tokens minted
+   * @param kwh The kWh equivalent
+   * @param timestamp The timestamp of production
+   * @param recordId The global record ID
+   */
+  event ProductionRecorded(
+    address indexed producer,
+    uint256 amount,
+    uint256 kwh,
+    uint256 timestamp,
+    uint256 indexed recordId
+  );
+
+  /**
+   * @notice Emitted when tokens are minted
+   * @param to The recipient address
+   * @param amount The amount of tokens minted
+   * @param timestamp The timestamp
+   */
+  event TokensMinted(address indexed to, uint256 amount, uint256 timestamp);
+
+  /**
+   * @notice Emitted when tokens are burned
+   * @param from The address from which tokens are burned
+   * @param amount The amount of tokens burned
+   * @param timestamp The timestamp
+   */
+  event TokensBurned(address indexed from, uint256 amount, uint256 timestamp);
+
+  /**
+   * @notice Emitted when ownership is transferred
+   * @param previousOwner The previous owner
+   * @param newOwner The new owner
+   */
+  event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+  // Custom Errors (Gas Optimization)
+
+  /// @notice Thrown when caller is not the owner
+  error UnauthorizedAccess();
+
+  /// @notice Thrown when an invalid amount is provided (e.g., zero)
+  error InvalidAmount();
+
+  /// @notice Thrown when an invalid address is provided (e.g., zero address)
+  error InvalidAddress();
+
+  /// @notice Thrown when HTS operation fails
+  /// @param responseCode The HTS response code
+  error TokenOperationFailed(int32 responseCode);
+
+  /// @notice Thrown when array parameters have mismatched lengths
+  error InvalidArrayLength();
+
+  /// @notice Thrown when signature verification fails
+  error InvalidSignature();
+
+  /// @notice Thrown when signature has expired
+  error SignatureExpired();
+
+  // Modifiers
+
+  /**
+   * @notice Restricts function access to contract owner only
+   */
+  modifier onlyOwner() {
+    if (msg.sender != owner) revert UnauthorizedAccess();
+    _;
+  }
+
+  /**
+   * @notice Validates that an address is not zero
+   * @param _address The address to validate
+   */
+  modifier validAddress(address _address) {
+    if (_address == address(0)) revert InvalidAddress();
+    _;
+  }
+
+  /**
+   * @notice Validates that an amount is greater than zero
+   * @param _amount The amount to validate
+   */
+  modifier validAmount(uint256 _amount) {
+    if (_amount == 0) revert InvalidAmount();
+    _;
+  }
+
+  // Constructor
+
+  /**
+   * @notice Initializes the SPARKController contract
+   * @param _sparkTokenAddress The address of the SPARK HTS token
+   * @param _owner The address of the contract owner
+   */
+  constructor(address _sparkTokenAddress, address _owner) validAddress(_sparkTokenAddress) validAddress(_owner) {
+    SPARK_TOKEN_ADDRESS = _sparkTokenAddress;
+    owner = _owner;
+
+    emit OwnershipTransferred(address(0), _owner);
+  }
+
+  // Administrative Functions
+
+  /**
+   * @notice Test function to check HTS mint response code without reverting
+   * @dev Only callable by owner, for debugging purposes
+   * @return The response code from HTS mint call
+   */
+  function testMintToken(uint256 amount) external onlyOwner returns (int32) {
+    IHederaTokenService hts = IHederaTokenService(HTS_PRECOMPILE);
+
+    bytes[] memory metadata;
+    (int32 responseCode, , ) = hts.mintToken(SPARK_TOKEN_ADDRESS, uint64(amount), metadata);
+
+    return responseCode;
+  }
+
+  /**
+   * @notice Transfers ownership to a new address
+   * @param newOwner The new owner address
+   */
+  function transferOwnership(address newOwner) external onlyOwner validAddress(newOwner) {
+    address previousOwner = owner;
+    owner = newOwner;
+
+    emit OwnershipTransferred(previousOwner, newOwner);
+  }
+
+  // Core Functions
+
+  /**
+   * @notice Records energy production and mints corresponding SPARK tokens
+   * @param producer The producer address
+   * @param kwh The amount of energy produced in kWh
+   * @param deadline Signature expiration timestamp
+   * @param signature Signature from the owner authorizing this operation
+   *
+   * @dev Uses signature verification instead of msg.sender check (Hedera compatible)
+   * @dev Converts kWh to SPARK tokens (1 kWh = 1000 SPARK)
+   * @dev Updates all tracking structures (records, aggregates)
+   * @dev Emits ProductionRecorded and TokensMinted events
+   */
+  function recordProductionAndMint(
+    address producer,
+    uint256 kwh,
+    uint256 deadline,
+    bytes memory signature
+  ) external validAddress(producer) validAmount(kwh) {
+    // Verify signature from owner
+    _verifySignature(producer, kwh, deadline, signature);
+
+    // Calculate SPARK amount (1 kWh = 1000 SPARK)
+    // Multiply by 10^8 to account for token decimals
+    uint256 sparkAmount = kwh * SPARK_PER_KWH * (10 ** DECIMALS);
+
+    // Mint tokens via HTS
+    _mintTokens(sparkAmount);
+
+    // Create production record
+    uint256 timestamp = block.timestamp;
+    ProductionRecord memory record = ProductionRecord({
+      producer: producer,
+      amount: sparkAmount,
+      timestamp: timestamp
+    });
+
+    // Store in global records
+    allProductionRecords.push(record);
+    uint256 recordId = allProductionRecords.length - 1;
+
+    // Store in producer records
+    producerRecords[producer].push(record);
+
+    // Update producer total
+    producerTotalProduction[producer] += sparkAmount;
+
+    // Update hourly aggregates
+    uint256 hourKey = timestamp / 3600; // Unix timestamp / 3600 = hour key
+    HourlyAggregate storage hourly = hourlyAggregates[producer][hourKey];
+    hourly.totalAmount += sparkAmount;
+    hourly.recordCount += 1;
+
+    // Update daily aggregates
+    uint256 dayKey = timestamp / 86400; // Unix timestamp / 86400 = day key
+    DailyAggregate storage daily = dailyAggregates[producer][dayKey];
+    daily.totalAmount += sparkAmount;
+    daily.recordCount += 1;
+
+    emit ProductionRecorded(producer, sparkAmount, kwh, timestamp, recordId);
+  }
+
+  /**
+   * @notice Burns SPARK tokens
+   * @param amount The amount of SPARK tokens to burn
+   *
+   * @dev Only callable by owner
+   * @dev Burns from treasury (contract must have supply key)
+   * @dev Emits TokensBurned event
+   */
+  function burnTokens(uint256 amount) external onlyOwner validAmount(amount) {
+    _burnTokens(amount);
+
+    emit TokensBurned(address(this), amount, block.timestamp);
+  }
+
+  /**
+   * @notice Batch record multiple productions and mint tokens
+   * @param producers Array of producer addresses
+   * @param kwhAmounts Array of kWh amounts corresponding to each producer
+   *
+   * @dev Only callable by owner
+   * @dev Arrays must have the same length
+   * @dev More gas efficient for multiple productions
+   */
+  function batchRecordProduction(
+    address[] calldata producers,
+    uint256[] calldata kwhAmounts
+  ) external onlyOwner {
+    if (producers.length != kwhAmounts.length) revert InvalidArrayLength();
+    if (producers.length == 0) revert InvalidAmount();
+
+    for (uint256 i = 0; i < producers.length; i++) {
+      if (producers[i] == address(0)) revert InvalidAddress();
+      if (kwhAmounts[i] == 0) revert InvalidAmount();
+
+      uint256 sparkAmount = kwhAmounts[i] * SPARK_PER_KWH * (10 ** DECIMALS);
+      uint256 timestamp = block.timestamp;
+
+      // Mint tokens
+      _mintTokens(sparkAmount);
+
+      // Create and store record
+      ProductionRecord memory record = ProductionRecord({
+        producer: producers[i],
+        amount: sparkAmount,
+        timestamp: timestamp
+      });
+
+      allProductionRecords.push(record);
+      uint256 recordId = allProductionRecords.length - 1;
+
+      producerRecords[producers[i]].push(record);
+      producerTotalProduction[producers[i]] += sparkAmount;
+
+      // Update aggregates
+      uint256 hourKey = timestamp / 3600;
+      HourlyAggregate storage hourly = hourlyAggregates[producers[i]][hourKey];
+      hourly.totalAmount += sparkAmount;
+      hourly.recordCount += 1;
+
+      uint256 dayKey = timestamp / 86400;
+      DailyAggregate storage daily = dailyAggregates[producers[i]][dayKey];
+      daily.totalAmount += sparkAmount;
+      daily.recordCount += 1;
+
+      emit ProductionRecorded(producers[i], sparkAmount, kwhAmounts[i], timestamp, recordId);
+    }
+  }
+
+  // Query Functions (View)
+
+  /**
+   * @notice Gets total production for a producer
+   * @param producer The producer address
+   * @return Total SPARK tokens produced
+   */
+  function getTotalProduction(address producer) external view returns (uint256) {
+    return producerTotalProduction[producer];
+  }
+
+  /**
+   * @notice Gets total production in kWh for a producer
+   * @param producer The producer address
+   * @return Total kWh produced
+   */
+  function getTotalProductionInKwh(address producer) external view returns (uint256) {
+    return producerTotalProduction[producer] / SPARK_PER_KWH;
+  }
+
+  /**
+   * @notice Gets all production records for a producer
+   * @param producer The producer address
+   * @return Array of production records
+   */
+  function getProductionRecords(address producer) external view returns (ProductionRecord[] memory) {
+    return producerRecords[producer];
+  }
+
+  /**
+   * @notice Gets paginated production records for a producer
+   * @param producer The producer address
+   * @param offset Starting index
+   * @param limit Number of records to return
+   * @return Array of production records
+   */
+  function getProductionRecordsPaginated(
+    address producer,
+    uint256 offset,
+    uint256 limit
+  ) external view returns (ProductionRecord[] memory) {
+    ProductionRecord[] storage records = producerRecords[producer];
+
+    if (offset >= records.length) {
+      return new ProductionRecord[](0);
+    }
+
+    uint256 end = offset + limit;
+    if (end > records.length) {
+      end = records.length;
+    }
+
+    uint256 resultLength = end - offset;
+    ProductionRecord[] memory result = new ProductionRecord[](resultLength);
+
+    for (uint256 i = 0; i < resultLength; i++) {
+      result[i] = records[offset + i];
+    }
+
+    return result;
+  }
+
+  /**
+   * @notice Gets daily production for a producer
+   * @param producer The producer address
+   * @param timestamp Any timestamp within the desired day
+   * @return amount Total SPARK produced that day
+   * @return count Number of production records that day
+   */
+  function getDailyProduction(
+    address producer,
+    uint256 timestamp
+  ) external view returns (uint256 amount, uint256 count) {
+    uint256 dayKey = timestamp / 86400;
+    DailyAggregate storage daily = dailyAggregates[producer][dayKey];
+    return (daily.totalAmount, daily.recordCount);
+  }
+
+  /**
+   * @notice Gets hourly production for a producer
+   * @param producer The producer address
+   * @param timestamp Any timestamp within the desired hour
+   * @return amount Total SPARK produced that hour
+   * @return count Number of production records that hour
+   */
+  function getHourlyProduction(
+    address producer,
+    uint256 timestamp
+  ) external view returns (uint256 amount, uint256 count) {
+    uint256 hourKey = timestamp / 3600;
+    HourlyAggregate storage hourly = hourlyAggregates[producer][hourKey];
+    return (hourly.totalAmount, hourly.recordCount);
+  }
+
+  /**
+   * @notice Gets production in a time range
+   * @param producer The producer address
+   * @param startTime Start timestamp (inclusive)
+   * @param endTime End timestamp (inclusive)
+   * @return Total SPARK produced in the range
+   */
+  function getProductionInRange(
+    address producer,
+    uint256 startTime,
+    uint256 endTime
+  ) external view returns (uint256) {
+    ProductionRecord[] storage records = producerRecords[producer];
+    uint256 total = 0;
+
+    for (uint256 i = 0; i < records.length; i++) {
+      if (records[i].timestamp >= startTime && records[i].timestamp <= endTime) {
+        total += records[i].amount;
+      }
+    }
+
+    return total;
+  }
+
+  /**
+   * @notice Gets total number of production records globally
+   * @return Total record count
+   */
+  function getTotalRecordsCount() external view returns (uint256) {
+    return allProductionRecords.length;
+  }
+
+  /**
+   * @notice Gets number of production records for a producer
+   * @param producer The producer address
+   * @return Producer's record count
+   */
+  function getUserRecordsCount(address producer) external view returns (uint256) {
+    return producerRecords[producer].length;
+  }
+
+  /**
+   * @notice Gets a specific global production record
+   * @param recordId The global record ID
+   * @return Production record
+   */
+  function getGlobalRecord(uint256 recordId) external view returns (ProductionRecord memory) {
+    if (recordId >= allProductionRecords.length) revert InvalidAmount();
+    return allProductionRecords[recordId];
+  }
+
+  // Internal Functions
+
+  /**
+   * @notice Internal function to mint tokens via HTS
+   * @param amount The amount to mint
+   */
+  function _mintTokens(uint256 amount) internal {
+    IHederaTokenService hts = IHederaTokenService(HTS_PRECOMPILE);
+
+    bytes[] memory metadata;
+    (int32 responseCode, , ) = hts.mintToken(SPARK_TOKEN_ADDRESS, uint64(amount), metadata);
+
+    if (responseCode != HTS_SUCCESS) {
+      revert TokenOperationFailed(responseCode);
+    }
+
+    emit TokensMinted(address(this), amount, block.timestamp);
+  }
+
+  /**
+   * @notice Internal function to burn tokens via HTS
+   * @param amount The amount to burn
+   */
+  function _burnTokens(uint256 amount) internal {
+    IHederaTokenService hts = IHederaTokenService(HTS_PRECOMPILE);
+
+    int64[] memory serialNumbers;
+    (int32 responseCode, ) = hts.burnToken(SPARK_TOKEN_ADDRESS, uint64(amount), serialNumbers);
+
+    if (responseCode != HTS_SUCCESS) {
+      revert TokenOperationFailed(responseCode);
+    }
+  }
+
+  /**
+   * @notice Converts SPARK tokens (in smallest units) to kWh
+   * @param sparkAmount Amount in SPARK tokens (smallest units)
+   * @return Amount in kWh
+   */
+  function sparkToKwh(uint256 sparkAmount) public pure returns (uint256) {
+    return sparkAmount / (SPARK_PER_KWH * (10 ** DECIMALS));
+  }
+
+  /**
+   * @notice Converts kWh to SPARK tokens (in smallest units)
+   * @param kwh Amount in kWh
+   * @return Amount in SPARK tokens (smallest units)
+   */
+  function kwhToSpark(uint256 kwh) public pure returns (uint256) {
+    return kwh * SPARK_PER_KWH * (10 ** DECIMALS);
+  }
+
+  // Signature Verification Functions
+
+  /**
+   * @notice Verifies that a signature was created by the owner
+   * @param producer The producer address
+   * @param kwh The kWh amount
+   * @param deadline The deadline timestamp (must be in the future)
+   * @param signature The signature bytes
+   */
+  function _verifySignature(
+    address producer,
+    uint256 kwh,
+    uint256 deadline,
+    bytes memory signature
+  ) internal view {
+    // Check deadline
+    if (block.timestamp > deadline) revert SignatureExpired();
+
+    // Create message hash
+    bytes32 messageHash = keccak256(abi.encodePacked(producer, kwh, deadline));
+    bytes32 ethSignedMessageHash = _getEthSignedMessageHash(messageHash);
+
+    // Recover signer
+    address signer = _recoverSigner(ethSignedMessageHash, signature);
+
+    // Verify signer is owner
+    if (signer != owner) revert InvalidSignature();
+  }
+
+  /**
+   * @notice Gets the Ethereum signed message hash
+   * @param messageHash The original message hash
+   * @return The Ethereum signed message hash
+   */
+  function _getEthSignedMessageHash(bytes32 messageHash) internal pure returns (bytes32) {
+    return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
+  }
+
+  /**
+   * @notice Recovers the signer address from a signature
+   * @param ethSignedMessageHash The Ethereum signed message hash
+   * @param signature The signature bytes
+   * @return The recovered signer address
+   */
+  function _recoverSigner(
+    bytes32 ethSignedMessageHash,
+    bytes memory signature
+  ) internal pure returns (address) {
+    require(signature.length == 65, "Invalid signature length");
+
+    bytes32 r;
+    bytes32 s;
+    uint8 v;
+
+    assembly {
+      r := mload(add(signature, 32))
+      s := mload(add(signature, 64))
+      v := byte(0, mload(add(signature, 96)))
+    }
+
+    // Handle Ethereum's signature format (v can be 0, 1, 27, or 28)
+    if (v < 27) {
+      v += 27;
+    }
+
+    require(v == 27 || v == 28, "Invalid signature version");
+
+    return ecrecover(ethSignedMessageHash, v, r, s);
+  }
+
+  /**
+   * @notice Helper function to get the message hash for signing
+   * @param producer The producer address
+   * @param kwh The kWh amount
+   * @param deadline The deadline timestamp
+   * @return The message hash
+   */
+  function getMessageHash(
+    address producer,
+    uint256 kwh,
+    uint256 deadline
+  ) public pure returns (bytes32) {
+    return keccak256(abi.encodePacked(producer, kwh, deadline));
+  }
+}
