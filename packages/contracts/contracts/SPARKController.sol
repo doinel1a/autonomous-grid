@@ -55,6 +55,14 @@ contract SPARKController {
     uint256 recordCount; // Number of production records
   }
 
+  /// @notice Transaction record structure
+  struct TransactionRecord {
+    address seller; // Seller address
+    address buyer; // Buyer address
+    uint256 amount; // Amount in SPARK tokens
+    uint256 timestamp; // Block timestamp
+  }
+
   /// @notice All production records (global)
   ProductionRecord[] public allProductionRecords;
 
@@ -73,6 +81,17 @@ contract SPARKController {
   /// @notice Daily aggregates per producer
   /// @dev producer => dayKey (timestamp / 86400) => DailyAggregate
   mapping(address => mapping(uint256 => DailyAggregate)) public dailyAggregates;
+
+  /// @notice Virtual balance per user (energy credits)
+  /// @dev user => balance in SPARK tokens (smallest units)
+  mapping(address => uint256) public virtualBalance;
+
+  /// @notice All transaction records (global)
+  TransactionRecord[] public allTransactions;
+
+  /// @notice Transaction records per user
+  /// @dev user => TransactionRecord[]
+  mapping(address => TransactionRecord[]) public userTransactions;
 
   // Events
 
@@ -115,6 +134,30 @@ contract SPARKController {
    */
   event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
+  /**
+   * @notice Emitted when energy is transferred between users
+   * @param seller The seller address
+   * @param buyer The buyer address
+   * @param amount The amount of SPARK tokens transferred
+   * @param timestamp The timestamp
+   * @param transactionId The global transaction ID
+   */
+  event EnergyTransferred(
+    address indexed seller,
+    address indexed buyer,
+    uint256 amount,
+    uint256 timestamp,
+    uint256 indexed transactionId
+  );
+
+  /**
+   * @notice Emitted when energy is consumed and burned
+   * @param consumer The consumer address
+   * @param amount The amount of SPARK tokens consumed
+   * @param timestamp The timestamp
+   */
+  event EnergyConsumed(address indexed consumer, uint256 amount, uint256 timestamp);
+
   // Custom Errors (Gas Optimization)
 
   /// @notice Thrown when caller is not the owner
@@ -138,6 +181,9 @@ contract SPARKController {
 
   /// @notice Thrown when signature has expired
   error SignatureExpired();
+
+  /// @notice Thrown when virtual balance is insufficient for operation
+  error InsufficientVirtualBalance();
 
   // Modifiers
 
@@ -256,6 +302,9 @@ contract SPARKController {
     // Update producer total
     producerTotalProduction[producer] += sparkAmount;
 
+    // Update virtual balance
+    virtualBalance[producer] += sparkAmount;
+
     // Update hourly aggregates
     uint256 hourKey = timestamp / 3600; // Unix timestamp / 3600 = hour key
     HourlyAggregate storage hourly = hourlyAggregates[producer][hourKey];
@@ -283,6 +332,74 @@ contract SPARKController {
     _burnTokens(amount);
 
     emit TokensBurned(address(this), amount, block.timestamp);
+  }
+
+  /**
+   * @notice Transfers energy credits from seller to buyer
+   * @param seller The seller address
+   * @param buyer The buyer address
+   * @param amount The amount of SPARK tokens to transfer (smallest units)
+   *
+   * @dev Only callable by owner
+   * @dev Transfers virtual balance without moving actual tokens
+   * @dev Creates transaction record and updates mappings
+   * @dev Emits EnergyTransferred event
+   */
+  function transferEnergy(
+    address seller,
+    address buyer,
+    uint256 amount
+  ) external onlyOwner validAddress(seller) validAddress(buyer) validAmount(amount) {
+    // Check seller has sufficient virtual balance
+    if (virtualBalance[seller] < amount) revert InsufficientVirtualBalance();
+
+    // Update virtual balances
+    virtualBalance[seller] -= amount;
+    virtualBalance[buyer] += amount;
+
+    // Create transaction record
+    uint256 timestamp = block.timestamp;
+    TransactionRecord memory txRecord = TransactionRecord({
+      seller: seller,
+      buyer: buyer,
+      amount: amount,
+      timestamp: timestamp
+    });
+
+    // Store in global transactions
+    allTransactions.push(txRecord);
+    uint256 transactionId = allTransactions.length - 1;
+
+    // Store in user transactions
+    userTransactions[seller].push(txRecord);
+    userTransactions[buyer].push(txRecord);
+
+    emit EnergyTransferred(seller, buyer, amount, timestamp, transactionId);
+  }
+
+  /**
+   * @notice Consumes energy and burns corresponding tokens from treasury
+   * @param consumer The consumer address
+   * @param amount The amount of SPARK tokens to consume (smallest units)
+   *
+   * @dev Only callable by owner
+   * @dev Reduces virtual balance and burns tokens from treasury
+   * @dev Emits EnergyConsumed and TokensBurned events
+   */
+  function consumeEnergy(
+    address consumer,
+    uint256 amount
+  ) external onlyOwner validAddress(consumer) validAmount(amount) {
+    // Check consumer has sufficient virtual balance
+    if (virtualBalance[consumer] < amount) revert InsufficientVirtualBalance();
+
+    // Update virtual balance
+    virtualBalance[consumer] -= amount;
+
+    // Burn tokens from treasury
+    _burnTokens(amount);
+
+    emit EnergyConsumed(consumer, amount, block.timestamp);
   }
 
   /**
@@ -323,6 +440,9 @@ contract SPARKController {
 
       producerRecords[producers[i]].push(record);
       producerTotalProduction[producers[i]] += sparkAmount;
+
+      // Update virtual balance
+      virtualBalance[producers[i]] += sparkAmount;
 
       // Update aggregates
       uint256 hourKey = timestamp / 3600;
@@ -491,6 +611,96 @@ contract SPARKController {
   function getGlobalRecord(uint256 recordId) external view returns (ProductionRecord memory) {
     if (recordId >= allProductionRecords.length) revert InvalidAmount();
     return allProductionRecords[recordId];
+  }
+
+  /**
+   * @notice Gets virtual balance for a user
+   * @param user The user address
+   * @return Virtual balance in SPARK tokens (smallest units)
+   */
+  function getVirtualBalance(address user) external view returns (uint256) {
+    return virtualBalance[user];
+  }
+
+  /**
+   * @notice Gets virtual balance in Wh for a user
+   * @param user The user address
+   * @return Virtual balance in Wh
+   */
+  function getVirtualBalanceInWh(address user) external view returns (uint256) {
+    return virtualBalance[user] / (10 ** DECIMALS);
+  }
+
+  /**
+   * @notice Gets virtual balance in kWh for a user
+   * @param user The user address
+   * @return Virtual balance in kWh
+   */
+  function getVirtualBalanceInKwh(address user) external view returns (uint256) {
+    return virtualBalance[user] / (10 ** DECIMALS) / 1000;
+  }
+
+  /**
+   * @notice Gets all transaction records for a user
+   * @param user The user address
+   * @return Array of transaction records
+   */
+  function getUserTransactions(address user) external view returns (TransactionRecord[] memory) {
+    return userTransactions[user];
+  }
+
+  /**
+   * @notice Gets all transaction records globally
+   * @return Array of all transaction records
+   */
+  function getAllTransactions() external view returns (TransactionRecord[] memory) {
+    return allTransactions;
+  }
+
+  /**
+   * @notice Gets paginated transaction records
+   * @param offset Starting index
+   * @param limit Number of records to return
+   * @return Array of transaction records
+   */
+  function getTransactionsPaginated(
+    uint256 offset,
+    uint256 limit
+  ) external view returns (TransactionRecord[] memory) {
+    if (offset >= allTransactions.length) {
+      return new TransactionRecord[](0);
+    }
+
+    uint256 end = offset + limit;
+    if (end > allTransactions.length) {
+      end = allTransactions.length;
+    }
+
+    uint256 resultLength = end - offset;
+    TransactionRecord[] memory result = new TransactionRecord[](resultLength);
+
+    for (uint256 i = 0; i < resultLength; i++) {
+      result[i] = allTransactions[offset + i];
+    }
+
+    return result;
+  }
+
+  /**
+   * @notice Gets total number of transactions globally
+   * @return Total transaction count
+   */
+  function getTotalTransactionsCount() external view returns (uint256) {
+    return allTransactions.length;
+  }
+
+  /**
+   * @notice Gets number of transactions for a user
+   * @param user The user address
+   * @return User's transaction count
+   */
+  function getUserTransactionsCount(address user) external view returns (uint256) {
+    return userTransactions[user].length;
   }
 
   // Internal Functions

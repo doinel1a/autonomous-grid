@@ -27,7 +27,11 @@
     "transfer:supply-key": "tsx scripts/hedera/transfer-supply-key.ts",
     "mint:spark": "tsx scripts/hedera/mint-spark.ts",
     "burn:spark": "tsx scripts/hedera/burn-spark.ts",
-    "query:production": "tsx scripts/hedera/query-production.ts"
+    "query:production": "tsx scripts/hedera/query-production.ts",
+    "transfer:energy": "tsx scripts/hedera/transfer-energy.ts",
+    "consume:energy": "tsx scripts/hedera/consume-energy.ts",
+    "query:balance": "tsx scripts/hedera/query-balance.ts",
+    "query:transactions": "tsx scripts/hedera/query-transactions.ts"
   },
   "dependencies": {
     "@hashgraph/sdk": "2.75.0",
