@@ -34,7 +34,11 @@
     "query:transactions": "tsx scripts/hedera/query-transactions.ts",
     "query:eur-usd-price": "tsx scripts/hedera/query-eur-usd-price.ts",
     "set:grid-price": "tsx scripts/hedera/set-grid-price.ts",
-    "query:grid-price": "tsx scripts/hedera/query-grid-price.ts"
+    "query:grid-price": "tsx scripts/hedera/query-grid-price.ts",
+    "create:offer": "tsx scripts/hedera/create-energy-offer.ts",
+    "cancel:offer": "tsx scripts/hedera/cancel-energy-offer.ts",
+    "match:offer": "tsx scripts/hedera/match-energy-offer.ts",
+    "query:offers": "tsx scripts/hedera/query-offers.ts"
   },
   "dependencies": {
     "@hashgraph/sdk": "2.75.0",

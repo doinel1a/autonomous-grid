@@ -77,6 +77,24 @@ contract SPARKController {
     uint256 timestamp; // Block timestamp
   }
 
+  /// @notice Energy offer status enum
+  enum OfferStatus {
+    ACTIVE, // Offer is active and can be matched
+    CANCELLED, // Offer was cancelled by seller or owner
+    COMPLETED, // Offer was fully matched
+    PARTIALLY_FILLED // Offer was partially matched and a new offer was created
+  }
+
+  /// @notice Energy offer structure
+  struct EnergyOffer {
+    uint256 offerId; // Unique offer ID
+    address seller; // Seller address
+    uint256 amountWh; // Amount in Wh available for sale
+    uint256 pricePerKwh; // Price in EUR per kWh (with 8 decimals precision)
+    uint256 timestamp; // Creation timestamp
+    OfferStatus status; // Offer status
+  }
+
   /// @notice All production records (global)
   ProductionRecord[] public allProductionRecords;
 
@@ -106,6 +124,20 @@ contract SPARKController {
   /// @notice Transaction records per user
   /// @dev user => TransactionRecord[]
   mapping(address => TransactionRecord[]) public userTransactions;
+
+  /// @notice All energy offers (global)
+  EnergyOffer[] public allEnergyOffers;
+
+  /// @notice Energy offers per seller
+  /// @dev seller => EnergyOffer[]
+  mapping(address => EnergyOffer[]) public sellerOffers;
+
+  /// @notice Locked balance per user (energy locked in active offers)
+  /// @dev user => locked balance in SPARK tokens (smallest units)
+  mapping(address => uint256) public lockedBalance;
+
+  /// @notice Next offer ID counter
+  uint256 private nextOfferId;
 
   // Events
 
@@ -186,6 +218,64 @@ contract SPARKController {
     uint256 timestamp
   );
 
+  /**
+   * @notice Emitted when an energy offer is created
+   * @param offerId The unique offer ID
+   * @param seller The seller address
+   * @param amountWh The amount in Wh
+   * @param pricePerKwh The price in EUR per kWh
+   * @param timestamp The timestamp
+   */
+  event OfferCreated(
+    uint256 indexed offerId,
+    address indexed seller,
+    uint256 amountWh,
+    uint256 pricePerKwh,
+    uint256 timestamp
+  );
+
+  /**
+   * @notice Emitted when an energy offer is matched
+   * @param offerId The offer ID
+   * @param seller The seller address
+   * @param buyer The buyer address
+   * @param amountWh The amount matched in Wh
+   * @param pricePerKwh The price in EUR per kWh
+   * @param timestamp The timestamp
+   * @param newOfferId The new offer ID if partially filled (0 if fully matched)
+   */
+  event OfferMatched(
+    uint256 indexed offerId,
+    address indexed seller,
+    address indexed buyer,
+    uint256 amountWh,
+    uint256 pricePerKwh,
+    uint256 timestamp,
+    uint256 newOfferId
+  );
+
+  /**
+   * @notice Emitted when an energy offer is cancelled
+   * @param offerId The offer ID
+   * @param seller The seller address
+   * @param amountWh The remaining amount in Wh
+   * @param timestamp The timestamp
+   */
+  event OfferCancelled(
+    uint256 indexed offerId,
+    address indexed seller,
+    uint256 amountWh,
+    uint256 timestamp
+  );
+
+  /**
+   * @notice Emitted when an energy offer is completed
+   * @param offerId The offer ID
+   * @param seller The seller address
+   * @param timestamp The timestamp
+   */
+  event OfferCompleted(uint256 indexed offerId, address indexed seller, uint256 timestamp);
+
   // Custom Errors (Gas Optimization)
 
   /// @notice Thrown when caller is not the owner
@@ -212,6 +302,21 @@ contract SPARKController {
 
   /// @notice Thrown when virtual balance is insufficient for operation
   error InsufficientVirtualBalance();
+
+  /// @notice Thrown when available balance (virtual - locked) is insufficient
+  error InsufficientAvailableBalance();
+
+  /// @notice Thrown when offer does not exist or ID is invalid
+  error InvalidOfferId();
+
+  /// @notice Thrown when trying to cancel/modify an offer that is not active
+  error OfferNotActive();
+
+  /// @notice Thrown when caller is not the seller of the offer
+  error NotOfferSeller();
+
+  /// @notice Thrown when caller is not a registered producer
+  error NotAProducer();
 
   // Modifiers
 
@@ -384,8 +489,9 @@ contract SPARKController {
     address buyer,
     uint256 amount
   ) external onlyOwner validAddress(seller) validAddress(buyer) validAmount(amount) {
-    // Check seller has sufficient virtual balance
-    if (virtualBalance[seller] < amount) revert InsufficientVirtualBalance();
+    // Check seller has sufficient available balance (virtual - locked)
+    uint256 availableBalance = virtualBalance[seller] - lockedBalance[seller];
+    if (availableBalance < amount) revert InsufficientAvailableBalance();
 
     // Update virtual balances
     virtualBalance[seller] -= amount;
@@ -424,8 +530,9 @@ contract SPARKController {
     address consumer,
     uint256 amount
   ) external onlyOwner validAddress(consumer) validAmount(amount) {
-    // Check consumer has sufficient virtual balance
-    if (virtualBalance[consumer] < amount) revert InsufficientVirtualBalance();
+    // Check consumer has sufficient available balance (virtual - locked)
+    uint256 availableBalance = virtualBalance[consumer] - lockedBalance[consumer];
+    if (availableBalance < amount) revert InsufficientAvailableBalance();
 
     // Update virtual balance
     virtualBalance[consumer] -= amount;
@@ -490,6 +597,202 @@ contract SPARKController {
       daily.recordCount += 1;
 
       emit ProductionRecorded(producers[i], sparkAmount, whAmounts[i], timestamp, recordId);
+    }
+  }
+
+  // Energy Offer Functions
+
+  /**
+   * @notice Creates a new energy offer for selling energy
+   * @param amountWh The amount of energy to sell in Wh
+   * @param pricePerKwh The price in EUR per kWh (with 8 decimals precision)
+   *
+   * @dev Only registered producers (who have produced energy) can create offers
+   * @dev Seller must have sufficient available balance (virtual - locked)
+   * @dev Locks the energy in the seller's balance
+   * @dev Emits OfferCreated event
+   */
+  function createEnergyOffer(
+    uint256 amountWh,
+    uint256 pricePerKwh
+  ) external validAmount(amountWh) validAmount(pricePerKwh) {
+    address seller = msg.sender;
+
+    // Check that seller is a registered producer (has produced energy)
+    if (producerTotalProduction[seller] == 0) revert NotAProducer();
+
+    // Convert Wh to SPARK tokens (smallest units)
+    uint256 sparkAmount = whToSpark(amountWh);
+
+    // Check seller has sufficient available balance
+    uint256 availableBalance = virtualBalance[seller] - lockedBalance[seller];
+    if (availableBalance < sparkAmount) revert InsufficientAvailableBalance();
+
+    // Lock the balance
+    lockedBalance[seller] += sparkAmount;
+
+    // Create offer
+    uint256 offerId = nextOfferId++;
+    uint256 timestamp = block.timestamp;
+
+    EnergyOffer memory offer = EnergyOffer({
+      offerId: offerId,
+      seller: seller,
+      amountWh: amountWh,
+      pricePerKwh: pricePerKwh,
+      timestamp: timestamp,
+      status: OfferStatus.ACTIVE
+    });
+
+    // Store offer
+    allEnergyOffers.push(offer);
+    sellerOffers[seller].push(offer);
+
+    emit OfferCreated(offerId, seller, amountWh, pricePerKwh, timestamp);
+  }
+
+  /**
+   * @notice Cancels an active energy offer
+   * @param offerId The ID of the offer to cancel
+   *
+   * @dev Only seller or owner can cancel
+   * @dev Unlocks the energy in the seller's balance
+   * @dev Emits OfferCancelled event
+   */
+  function cancelEnergyOffer(uint256 offerId) external {
+    // Validate offer ID
+    if (offerId >= allEnergyOffers.length) revert InvalidOfferId();
+
+    EnergyOffer storage offer = allEnergyOffers[offerId];
+
+    // Check offer is active
+    if (offer.status != OfferStatus.ACTIVE) revert OfferNotActive();
+
+    // Check caller is seller or owner
+    if (msg.sender != offer.seller && msg.sender != owner) revert NotOfferSeller();
+
+    // Convert Wh to SPARK tokens
+    uint256 sparkAmount = whToSpark(offer.amountWh);
+
+    // Unlock balance
+    lockedBalance[offer.seller] -= sparkAmount;
+
+    // Update offer status
+    offer.status = OfferStatus.CANCELLED;
+
+    // Update seller offers array
+    _updateSellerOffer(offer.seller, offerId, OfferStatus.CANCELLED);
+
+    emit OfferCancelled(offerId, offer.seller, offer.amountWh, block.timestamp);
+  }
+
+  /**
+   * @notice Matches an energy offer (fully or partially)
+   * @param offerId The ID of the offer to match
+   * @param buyer The buyer address
+   * @param amountWh The amount to match in Wh
+   *
+   * @dev Only callable by owner
+   * @dev If partial match, creates new offer with remaining amount
+   * @dev Transfers energy from seller to buyer
+   * @dev Emits OfferMatched and optionally OfferCompleted events
+   */
+  function matchEnergyOffer(
+    uint256 offerId,
+    address buyer,
+    uint256 amountWh
+  ) external onlyOwner validAddress(buyer) validAmount(amountWh) {
+    // Validate offer ID
+    if (offerId >= allEnergyOffers.length) revert InvalidOfferId();
+
+    EnergyOffer storage offer = allEnergyOffers[offerId];
+
+    // Check offer is active
+    if (offer.status != OfferStatus.ACTIVE) revert OfferNotActive();
+
+    // Check amount is not greater than offer amount
+    if (amountWh > offer.amountWh) revert InvalidAmount();
+
+    address seller = offer.seller;
+    uint256 pricePerKwh = offer.pricePerKwh;
+    uint256 timestamp = block.timestamp;
+
+    // Convert Wh to SPARK tokens
+    uint256 sparkAmount = whToSpark(amountWh);
+
+    // Unlock balance from seller
+    lockedBalance[seller] -= sparkAmount;
+
+    // Transfer energy from seller to buyer (updates virtual balances)
+    virtualBalance[seller] -= sparkAmount;
+    virtualBalance[buyer] += sparkAmount;
+
+    // Create transaction record
+    TransactionRecord memory txRecord = TransactionRecord({
+      seller: seller,
+      buyer: buyer,
+      amount: sparkAmount,
+      timestamp: timestamp
+    });
+
+    allTransactions.push(txRecord);
+    userTransactions[seller].push(txRecord);
+    userTransactions[buyer].push(txRecord);
+
+    uint256 newOfferId = 0;
+
+    // Check if partial or full match
+    if (amountWh < offer.amountWh) {
+      // Partial match - create new offer with remaining amount
+      uint256 remainingWh = offer.amountWh - amountWh;
+      uint256 remainingSpark = whToSpark(remainingWh);
+
+      // Lock remaining balance
+      lockedBalance[seller] += remainingSpark;
+
+      // Create new offer
+      newOfferId = nextOfferId++;
+      EnergyOffer memory newOffer = EnergyOffer({
+        offerId: newOfferId,
+        seller: seller,
+        amountWh: remainingWh,
+        pricePerKwh: pricePerKwh,
+        timestamp: timestamp,
+        status: OfferStatus.ACTIVE
+      });
+
+      allEnergyOffers.push(newOffer);
+      sellerOffers[seller].push(newOffer);
+
+      // Update original offer status
+      offer.status = OfferStatus.PARTIALLY_FILLED;
+      _updateSellerOffer(seller, offerId, OfferStatus.PARTIALLY_FILLED);
+
+      emit OfferCreated(newOfferId, seller, remainingWh, pricePerKwh, timestamp);
+    } else {
+      // Full match - mark as completed
+      offer.status = OfferStatus.COMPLETED;
+      _updateSellerOffer(seller, offerId, OfferStatus.COMPLETED);
+
+      emit OfferCompleted(offerId, seller, timestamp);
+    }
+
+    emit OfferMatched(offerId, seller, buyer, amountWh, pricePerKwh, timestamp, newOfferId);
+  }
+
+  /**
+   * @notice Internal function to update seller's offer array
+   * @param seller The seller address
+   * @param offerId The offer ID
+   * @param status The new status
+   */
+  function _updateSellerOffer(address seller, uint256 offerId, OfferStatus status) internal {
+    EnergyOffer[] storage offers = sellerOffers[seller];
+    for (uint256 i = 0; i < offers.length; i++) {
+      if (offers[i].offerId == offerId) {
+        offers[i].status = status;
+        break;
+      }
     }
   }
 
@@ -735,6 +1038,207 @@ contract SPARKController {
    */
   function getUserTransactionsCount(address user) external view returns (uint256) {
     return userTransactions[user].length;
+  }
+
+  // Energy Offer Query Functions
+
+  /**
+   * @notice Gets all active energy offers (paginated)
+   * @param offset Starting index
+   * @param limit Number of records to return
+   * @return Array of active energy offers
+   */
+  function getActiveOffers(uint256 offset, uint256 limit) external view returns (EnergyOffer[] memory) {
+    // First, count active offers
+    uint256 activeCount = 0;
+    for (uint256 i = 0; i < allEnergyOffers.length; i++) {
+      if (allEnergyOffers[i].status == OfferStatus.ACTIVE) {
+        activeCount++;
+      }
+    }
+
+    if (offset >= activeCount) {
+      return new EnergyOffer[](0);
+    }
+
+    uint256 end = offset + limit;
+    if (end > activeCount) {
+      end = activeCount;
+    }
+
+    uint256 resultLength = end - offset;
+    EnergyOffer[] memory result = new EnergyOffer[](resultLength);
+
+    uint256 currentIndex = 0;
+    uint256 resultIndex = 0;
+
+    for (uint256 i = 0; i < allEnergyOffers.length && resultIndex < resultLength; i++) {
+      if (allEnergyOffers[i].status == OfferStatus.ACTIVE) {
+        if (currentIndex >= offset) {
+          result[resultIndex] = allEnergyOffers[i];
+          resultIndex++;
+        }
+        currentIndex++;
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * @notice Gets all energy offers for a specific seller (paginated)
+   * @param seller The seller address
+   * @param offset Starting index
+   * @param limit Number of records to return
+   * @return Array of energy offers
+   */
+  function getOffersBySeller(
+    address seller,
+    uint256 offset,
+    uint256 limit
+  ) external view returns (EnergyOffer[] memory) {
+    EnergyOffer[] storage offers = sellerOffers[seller];
+
+    if (offset >= offers.length) {
+      return new EnergyOffer[](0);
+    }
+
+    uint256 end = offset + limit;
+    if (end > offers.length) {
+      end = offers.length;
+    }
+
+    uint256 resultLength = end - offset;
+    EnergyOffer[] memory result = new EnergyOffer[](resultLength);
+
+    for (uint256 i = 0; i < resultLength; i++) {
+      result[i] = offers[offset + i];
+    }
+
+    return result;
+  }
+
+  /**
+   * @notice Gets all energy offers globally (paginated)
+   * @param offset Starting index
+   * @param limit Number of records to return
+   * @return Array of all energy offers
+   */
+  function getAllOffers(uint256 offset, uint256 limit) external view returns (EnergyOffer[] memory) {
+    if (offset >= allEnergyOffers.length) {
+      return new EnergyOffer[](0);
+    }
+
+    uint256 end = offset + limit;
+    if (end > allEnergyOffers.length) {
+      end = allEnergyOffers.length;
+    }
+
+    uint256 resultLength = end - offset;
+    EnergyOffer[] memory result = new EnergyOffer[](resultLength);
+
+    for (uint256 i = 0; i < resultLength; i++) {
+      result[i] = allEnergyOffers[offset + i];
+    }
+
+    return result;
+  }
+
+  /**
+   * @notice Gets a specific energy offer by ID
+   * @param offerId The offer ID
+   * @return The energy offer
+   */
+  function getOfferById(uint256 offerId) external view returns (EnergyOffer memory) {
+    if (offerId >= allEnergyOffers.length) revert InvalidOfferId();
+    return allEnergyOffers[offerId];
+  }
+
+  /**
+   * @notice Gets locked balance for a user
+   * @param user The user address
+   * @return Locked balance in SPARK tokens (smallest units)
+   */
+  function getLockedBalance(address user) external view returns (uint256) {
+    return lockedBalance[user];
+  }
+
+  /**
+   * @notice Gets locked balance in Wh for a user
+   * @param user The user address
+   * @return Locked balance in Wh
+   */
+  function getLockedBalanceInWh(address user) external view returns (uint256) {
+    return sparkToWh(lockedBalance[user]);
+  }
+
+  /**
+   * @notice Gets locked balance in kWh for a user
+   * @param user The user address
+   * @return Locked balance in kWh
+   */
+  function getLockedBalanceInKwh(address user) external view returns (uint256) {
+    return sparkToWh(lockedBalance[user]) / 1000;
+  }
+
+  /**
+   * @notice Gets available balance (virtual - locked) for a user
+   * @param user The user address
+   * @return Available balance in SPARK tokens (smallest units)
+   */
+  function getAvailableBalance(address user) external view returns (uint256) {
+    return virtualBalance[user] - lockedBalance[user];
+  }
+
+  /**
+   * @notice Gets available balance in Wh for a user
+   * @param user The user address
+   * @return Available balance in Wh
+   */
+  function getAvailableBalanceInWh(address user) external view returns (uint256) {
+    uint256 available = virtualBalance[user] - lockedBalance[user];
+    return sparkToWh(available);
+  }
+
+  /**
+   * @notice Gets available balance in kWh for a user
+   * @param user The user address
+   * @return Available balance in kWh
+   */
+  function getAvailableBalanceInKwh(address user) external view returns (uint256) {
+    uint256 available = virtualBalance[user] - lockedBalance[user];
+    return sparkToWh(available) / 1000;
+  }
+
+  /**
+   * @notice Gets total number of energy offers globally
+   * @return Total offer count
+   */
+  function getTotalOffersCount() external view returns (uint256) {
+    return allEnergyOffers.length;
+  }
+
+  /**
+   * @notice Gets number of energy offers for a seller
+   * @param seller The seller address
+   * @return Seller's offer count
+   */
+  function getSellerOffersCount(address seller) external view returns (uint256) {
+    return sellerOffers[seller].length;
+  }
+
+  /**
+   * @notice Gets total number of active energy offers
+   * @return Active offer count
+   */
+  function getActiveOffersCount() external view returns (uint256) {
+    uint256 count = 0;
+    for (uint256 i = 0; i < allEnergyOffers.length; i++) {
+      if (allEnergyOffers[i].status == OfferStatus.ACTIVE) {
+        count++;
+      }
+    }
+    return count;
   }
 
   // Internal Functions
