@@ -2,6 +2,45 @@
 
 This package contains smart contracts for the Autonomous Grid Virtual Power Plant (VPP) system, built with Hardhat 3 Beta, Hedera Token Service (HTS), and the `viem` library.
 
+---
+
+## 🚀 Version 2.0 Updates
+
+**Latest Release**: October 2025
+
+### Security Enhancements
+
+✅ **Enhanced Replay Attack Protection**
+- Signatures now include contract address and chain ID
+- Prevents cross-chain replay (testnet → mainnet)
+- Prevents cross-contract replay (different deployments)
+
+✅ **Pyth Oracle Validation**
+- Price feeds validated for staleness (max 60 seconds)
+- Negative price protection
+- Invalid exponent protection
+
+✅ **Gas Optimizations**
+- Active offer counters (O(n) → O(1) queries)
+- Storage optimization (66% reduction per offer)
+- Custom errors instead of require strings
+
+### Breaking Changes
+
+⚠️ **Signature Format Updated**
+- Old signatures (v1.0) will NOT work with v2.0 contract
+- All signature generation scripts updated
+- See [SIGNATURE_VERIFICATION.md](./SIGNATURE_VERIFICATION.md#security-updates-v20) for migration guide
+
+### New Features
+
+- Energy marketplace with buy/sell offers
+- Partial offer matching
+- Balance locking system
+- Grid price oracle integration
+
+---
+
 ## Overview
 
 The Autonomous Grid contracts manage solar energy production tracking and tokenization through the SPARK token system on Hedera.
@@ -32,10 +71,13 @@ The Autonomous Grid contracts manage solar energy production tracking and tokeni
 - 📊 Production tracking per producer
 - 📈 Hourly and daily aggregated statistics
 - 🔍 Complete production history on-chain
-- 🔐 ECDSA signature verification for production authorization
+- 🔐 Enhanced ECDSA signature verification (v2.0: includes contract address + chain ID)
 - 🔑 Supply key management (transferred to contract for autonomous operation)
-- ⏱️ Deadline-based replay protection
-- ⛽ Gas-optimized with custom errors and batch operations
+- ⏱️ Multi-layer replay protection (deadline + cross-chain + cross-contract)
+- 🏪 Energy marketplace (buy/sell offers with partial matching)
+- 🔒 Balance locking system for active offers
+- 🌐 Pyth oracle integration for EUR/USD price feeds
+- ⛽ Gas-optimized with custom errors, batch operations, and O(1) queries
 
 ## Quick Start
 
