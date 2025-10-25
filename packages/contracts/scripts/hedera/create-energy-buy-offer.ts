@@ -11,6 +11,9 @@ import {
   Hbar,
   PrivateKey
 } from '@hashgraph/sdk';
+import { ethers } from 'ethers';
+
+import { signCreateBuyOffer } from './utils/signature.js';
 
 /**
  * Creates an energy buy offer
@@ -18,9 +21,9 @@ import {
  * Usage:
  *   npm run create:buy-offer
  *   Or set environment variables:
- *   BUY_OFFER_AMOUNT_WH=1000 BUY_OFFER_MAX_PRICE_PER_KWH=20000000 npm run create:buy-offer
+ *   BUYER_ADDRESS=0x... BUY_OFFER_AMOUNT_WH=1000 BUY_OFFER_MAX_PRICE_PER_KWH=20000000 npm run create:buy-offer
  *
- * Note: Anyone can create buy offers (no registration required)
+ * Note: Admin can create buy offers for any buyer address
  */
 async function createEnergyBuyOffer() {
   console.log('💰 Creating energy buy offer...\n');
@@ -46,6 +49,15 @@ async function createEnergyBuyOffer() {
     );
   }
 
+  // Get private key for signing
+  const privateKeyHex = process.env.HEDERA_TESTNET_HEX_PRIVATE_KEY;
+  if (!privateKeyHex) {
+    throw new Error('❌ Missing HEDERA_TESTNET_HEX_PRIVATE_KEY in .env');
+  }
+
+  // Get buyer address from environment variable
+  const buyerAddress = process.env.BUYER_ADDRESS || '0xd7b4967Edbc170774345b4a84F2E2c2CD3a3f102'; // Buyer B
+
   // Get parameters from environment or use defaults for testing
   const amountWh = process.env.BUY_OFFER_AMOUNT_WH ? parseInt(process.env.BUY_OFFER_AMOUNT_WH) : 1000; // 1000 Wh = 1 kWh
   const maxPricePerKwh = process.env.BUY_OFFER_MAX_PRICE_PER_KWH
@@ -55,7 +67,7 @@ async function createEnergyBuyOffer() {
   console.log(`📋 Configuration:`);
   console.log(`   Network: ${network}`);
   console.log(`   Controller: ${controllerAddress}`);
-  console.log(`   Buyer: ${accountId}`);
+  console.log(`   Buyer: ${buyerAddress}`);
   console.log(`   Amount: ${amountWh} Wh (${amountWh / 1000} kWh)`);
   console.log(`   Max Price: ${maxPricePerKwh / 100000000} EUR/kWh\n`);
 
@@ -66,17 +78,46 @@ async function createEnergyBuyOffer() {
   client.setOperator(accountId, privateKey);
 
   try {
-    console.log('⏳ Creating energy buy offer...');
+    console.log('⏳ Generating signature...');
 
-    // Call createEnergyBuyOffer function
+    // Generate signature deadline (1 hour from now)
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+
+    // Get chainId (296 for Hedera testnet, 295 for mainnet)
+    const chainId = network === 'mainnet' ? 295 : 296;
+
+    // Generate signature
+    const signature = await signCreateBuyOffer(
+      buyerAddress,
+      amountWh,
+      maxPricePerKwh,
+      deadline,
+      controllerAddress,
+      chainId,
+      privateKeyHex
+    );
+
+    console.log(
+      `   Signature: ${signature.substring(0, 10)}...${signature.substring(signature.length - 10)}`
+    );
+    console.log(`   Deadline: ${new Date(deadline * 1000).toISOString()}`);
+
+    console.log('\n⏳ Creating energy buy offer...');
+
+    // Call createEnergyBuyOffer function with signature
     const contractExecTx = await new ContractExecuteTransaction()
       .setContractId(ContractId.fromSolidityAddress(controllerAddress))
-      .setGas(1000000) // 1M gas
+      .setGas(2000000) // 2M gas for signature verification
       .setFunction(
         'createEnergyBuyOffer',
-        new ContractFunctionParameters().addUint256(amountWh).addUint256(maxPricePerKwh)
+        new ContractFunctionParameters()
+          .addAddress(buyerAddress)
+          .addUint256(amountWh)
+          .addUint256(maxPricePerKwh)
+          .addUint256(deadline)
+          .addBytes(ethers.getBytes(signature))
       )
-      .setMaxTransactionFee(new Hbar(5))
+      .setMaxTransactionFee(new Hbar(10))
       .execute(client);
 
     console.log('⏳ Waiting for consensus...');

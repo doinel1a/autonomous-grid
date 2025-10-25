@@ -46,9 +46,9 @@ async function matchEnergyOffer() {
   }
 
   // Get parameters from environment
-  const offerId = process.env.OFFER_ID ? parseInt(process.env.OFFER_ID) : null;
-  const buyerAddress = process.env.BUYER_ADDRESS || null;
-  const matchAmountWh = process.env.MATCH_AMOUNT_WH ? parseInt(process.env.MATCH_AMOUNT_WH) : null;
+  const offerId = process.env.OFFER_ID ? parseInt(process.env.OFFER_ID) : 0;
+  const buyerAddress = process.env.BUYER_ADDRESS || '0xd7b4967Edbc170774345b4a84F2E2c2CD3a3f102';
+  const matchAmountWh = process.env.MATCH_AMOUNT_WH ? parseInt(process.env.MATCH_AMOUNT_WH) : 500;
 
   if (offerId === null || !buyerAddress || matchAmountWh === null) {
     throw new Error(

@@ -57,13 +57,13 @@ async function queryProduction() {
 
   try {
     // Convert producer address to proper format
-    let evmProducerAddress: string;
-    if (producerAddress.includes('.')) {
-      evmProducerAddress = accountIdToAddress(producerAddress);
-      console.log(`   Producer EVM Address: ${evmProducerAddress}\n`);
-    } else {
-      evmProducerAddress = producerAddress;
-    }
+    let evmProducerAddress: string = '0xd7b4967Edbc170774345b4a84F2E2c2CD3a3f102';
+    // if (producerAddress.includes('.')) {
+    //   evmProducerAddress = accountIdToAddress(producerAddress);
+    //   console.log(`   Producer EVM Address: ${evmProducerAddress}\n`);
+    // } else {
+    //   evmProducerAddress = producerAddress;
+    // }
 
     const contractId = ContractId.fromSolidityAddress(controllerAddress);
 

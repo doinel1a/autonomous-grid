@@ -46,7 +46,15 @@ async function queryOffers() {
   }
 
   const queryType = process.env.QUERY_TYPE || 'active';
-  const sellerAddress = process.env.SELLER_ADDRESS || accountId;
+  // Use EVM address derived from private key (msg.sender in contract) as default
+  const privateKeyForAddress = process.env.HEDERA_TESTNET_HEX_PRIVATE_KEY;
+  let defaultSellerAddress = accountId;
+  if (privateKeyForAddress && queryType === 'seller') {
+    const { Wallet } = await import('ethers');
+    const wallet = new Wallet(privateKeyForAddress);
+    defaultSellerAddress = wallet.address;
+  }
+  const sellerAddress = process.env.SELLER_ADDRESS || '0xd7b4967Edbc170774345b4a84F2E2c2CD3a3f102';
   const offerId = process.env.OFFER_ID ? parseInt(process.env.OFFER_ID) : null;
   const offset = process.env.OFFSET ? parseInt(process.env.OFFSET) : 0;
   const limit = process.env.LIMIT ? parseInt(process.env.LIMIT) : 10;
@@ -223,11 +231,7 @@ async function queryAllOffers(
   });
 }
 
-async function queryOfferCounts(
-  client: Client,
-  contractAddress: string,
-  iface: ethers.Interface
-) {
+async function queryOfferCounts(client: Client, contractAddress: string, iface: ethers.Interface) {
   console.log('\n📈 Offer Statistics:\n');
 
   // Total offers count

@@ -53,7 +53,15 @@ async function mintSpark() {
   }
 
   // Get parameters from environment or use defaults for testing
-  const producerAddress = process.env.PRODUCER_ADDRESS || accountId.toString();
+  // Use EVM address derived from private key (msg.sender in contract)
+  const privateKeyForAddress = process.env.HEDERA_TESTNET_HEX_PRIVATE_KEY;
+  let defaultProducerAddress = accountId.toString();
+  if (privateKeyForAddress) {
+    const { Wallet } = await import('ethers');
+    const wallet = new Wallet(privateKeyForAddress);
+    defaultProducerAddress = wallet.address;
+  }
+  const producerAddress = process.env.PRODUCER_ADDRESS || '0xCd27a4898Bf3692dC5Dc2B6dF6fe59605eB5089e'; // Admin address
   const whAmount = 532;
 
   console.log(`📋 Configuration:`);

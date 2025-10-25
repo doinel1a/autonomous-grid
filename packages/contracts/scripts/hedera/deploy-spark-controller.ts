@@ -80,7 +80,7 @@ async function deploySPARKController() {
 
     // Deploy the contract with constructor parameters
     const contractCreateTx = await new ContractCreateFlow()
-      .setGas(3000000) // 3M gas for contract deployment (SPARKController is a large contract)
+      .setGas(4000000) // 4M gas for contract deployment (SPARKController is a large contract)
       .setBytecode(contractBytecode)
       .setConstructorParameters(
         new ContractFunctionParameters()

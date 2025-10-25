@@ -11,6 +11,9 @@ import {
   Hbar,
   PrivateKey
 } from '@hashgraph/sdk';
+import { ethers } from 'ethers';
+
+import { signCancelBuyOffer } from './utils/signature.js';
 
 /**
  * Cancels an active energy buy offer
@@ -18,7 +21,7 @@ import {
  * Usage:
  *   BUY_OFFER_ID=0 npm run cancel:buy-offer
  *
- * Note: Only the buyer or contract owner can cancel a buy offer
+ * Note: Admin can cancel any active buy offer
  */
 async function cancelEnergyBuyOffer() {
   console.log('🚫 Cancelling energy buy offer...\n');
@@ -44,6 +47,12 @@ async function cancelEnergyBuyOffer() {
     );
   }
 
+  // Get private key for signing
+  const privateKeyHex = process.env.HEDERA_TESTNET_HEX_PRIVATE_KEY;
+  if (!privateKeyHex) {
+    throw new Error('❌ Missing HEDERA_TESTNET_HEX_PRIVATE_KEY in .env');
+  }
+
   // Get offer ID from environment
   const offerId = process.env.BUY_OFFER_ID ? parseInt(process.env.BUY_OFFER_ID) : null;
 
@@ -58,7 +67,6 @@ async function cancelEnergyBuyOffer() {
   console.log(`📋 Configuration:`);
   console.log(`   Network: ${network}`);
   console.log(`   Controller: ${controllerAddress}`);
-  console.log(`   Caller: ${accountId}`);
   console.log(`   Buy Offer ID: ${offerId}\n`);
 
   // Initialize Hedera client
@@ -68,14 +76,42 @@ async function cancelEnergyBuyOffer() {
   client.setOperator(accountId, privateKey);
 
   try {
-    console.log('⏳ Cancelling energy buy offer...');
+    console.log('⏳ Generating signature...');
 
-    // Call cancelEnergyBuyOffer function
+    // Generate signature deadline (1 hour from now)
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+
+    // Get chainId (296 for Hedera testnet, 295 for mainnet)
+    const chainId = network === 'mainnet' ? 295 : 296;
+
+    // Generate signature
+    const signature = await signCancelBuyOffer(
+      offerId,
+      deadline,
+      controllerAddress,
+      chainId,
+      privateKeyHex
+    );
+
+    console.log(
+      `   Signature: ${signature.substring(0, 10)}...${signature.substring(signature.length - 10)}`
+    );
+    console.log(`   Deadline: ${new Date(deadline * 1000).toISOString()}`);
+
+    console.log('\n⏳ Cancelling energy buy offer...');
+
+    // Call cancelEnergyBuyOffer function with signature
     const contractExecTx = await new ContractExecuteTransaction()
       .setContractId(ContractId.fromSolidityAddress(controllerAddress))
-      .setGas(500000) // 500k gas
-      .setFunction('cancelEnergyBuyOffer', new ContractFunctionParameters().addUint256(offerId))
-      .setMaxTransactionFee(new Hbar(5))
+      .setGas(2000000) // 2M gas for signature verification
+      .setFunction(
+        'cancelEnergyBuyOffer',
+        new ContractFunctionParameters()
+          .addUint256(offerId)
+          .addUint256(deadline)
+          .addBytes(ethers.getBytes(signature))
+      )
+      .setMaxTransactionFee(new Hbar(10))
       .execute(client);
 
     console.log('⏳ Waiting for consensus...');

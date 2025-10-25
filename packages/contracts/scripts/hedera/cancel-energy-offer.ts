@@ -11,6 +11,9 @@ import {
   Hbar,
   PrivateKey
 } from '@hashgraph/sdk';
+import { ethers } from 'ethers';
+
+import { signCancelOffer } from './utils/signature.js';
 
 /**
  * Cancels an active energy offer
@@ -18,7 +21,7 @@ import {
  * Usage:
  *   OFFER_ID=0 npm run cancel:offer
  *
- * Note: Only the seller or contract owner can cancel an offer
+ * Note: Admin can cancel any active sell offer
  */
 async function cancelEnergyOffer() {
   console.log('🚫 Cancelling energy offer...\n');
@@ -44,6 +47,12 @@ async function cancelEnergyOffer() {
     );
   }
 
+  // Get private key for signing
+  const privateKeyHex = process.env.HEDERA_TESTNET_HEX_PRIVATE_KEY;
+  if (!privateKeyHex) {
+    throw new Error('❌ Missing HEDERA_TESTNET_HEX_PRIVATE_KEY in .env');
+  }
+
   // Get offer ID from environment
   const offerId = process.env.OFFER_ID ? parseInt(process.env.OFFER_ID) : null;
 
@@ -58,7 +67,6 @@ async function cancelEnergyOffer() {
   console.log(`📋 Configuration:`);
   console.log(`   Network: ${network}`);
   console.log(`   Controller: ${controllerAddress}`);
-  console.log(`   Caller: ${accountId}`);
   console.log(`   Offer ID: ${offerId}\n`);
 
   // Initialize Hedera client
@@ -68,14 +76,42 @@ async function cancelEnergyOffer() {
   client.setOperator(accountId, privateKey);
 
   try {
-    console.log('⏳ Cancelling energy offer...');
+    console.log('⏳ Generating signature...');
 
-    // Call cancelEnergyOffer function
+    // Generate signature deadline (1 hour from now)
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+
+    // Get chainId (296 for Hedera testnet, 295 for mainnet)
+    const chainId = network === 'mainnet' ? 295 : 296;
+
+    // Generate signature
+    const signature = await signCancelOffer(
+      offerId,
+      deadline,
+      controllerAddress,
+      chainId,
+      privateKeyHex
+    );
+
+    console.log(
+      `   Signature: ${signature.substring(0, 10)}...${signature.substring(signature.length - 10)}`
+    );
+    console.log(`   Deadline: ${new Date(deadline * 1000).toISOString()}`);
+
+    console.log('\n⏳ Cancelling energy offer...');
+
+    // Call cancelEnergyOffer function with signature
     const contractExecTx = await new ContractExecuteTransaction()
       .setContractId(ContractId.fromSolidityAddress(controllerAddress))
-      .setGas(500000) // 500k gas
-      .setFunction('cancelEnergyOffer', new ContractFunctionParameters().addUint256(offerId))
-      .setMaxTransactionFee(new Hbar(5))
+      .setGas(2000000) // 2M gas for signature verification
+      .setFunction(
+        'cancelEnergyOffer',
+        new ContractFunctionParameters()
+          .addUint256(offerId)
+          .addUint256(deadline)
+          .addBytes(ethers.getBytes(signature))
+      )
+      .setMaxTransactionFee(new Hbar(10))
       .execute(client);
 
     console.log('⏳ Waiting for consensus...');
@@ -87,7 +123,6 @@ async function cancelEnergyOffer() {
     console.log(`   Transaction ID: ${contractExecTx.transactionId.toString()}`);
     console.log(`   Status: ${receipt.status.toString()}`);
     console.log(`   Offer ID: ${offerId}`);
-    console.log(`   Caller: ${accountId}`);
 
     console.log(`\n🔗 View on HashScan:`);
     console.log(
@@ -112,9 +147,9 @@ async function cancelEnergyOffer() {
         console.error('\n💡 Solution: Your account needs more HBAR.');
       } else if (error.message.includes('CONTRACT_REVERT')) {
         console.error('\n💡 Possible reasons:');
+        console.error('   - Invalid signature or expired deadline');
         console.error('   - Invalid offer ID (does not exist)');
         console.error('   - Offer is not ACTIVE (already cancelled/completed)');
-        console.error('   - You are not the seller or contract owner');
         console.error('   - Run: npm run query:offers (to see active offers)');
       } else if (error.message.includes('INVALID_CONTRACT_ID')) {
         console.error('\n💡 Solution: Check TESTNET_SPARK_CONTROLLER_ADDRESS in .env');

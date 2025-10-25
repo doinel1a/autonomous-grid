@@ -43,7 +43,7 @@ async function queryBalance() {
 
   // Get query parameters
   const userAddress =
-    process.env.QUERY_USER_ADDRESS || '0xd7b4967Edbc170774345b4a84F2E2c2CD3a3f102';
+    process.env.QUERY_USER_ADDRESS || '0xCd27a4898Bf3692dC5Dc2B6dF6fe59605eB5089e'; // Producer A
 
   console.log(`📋 Configuration:`);
   console.log(`   Network: ${network}`);

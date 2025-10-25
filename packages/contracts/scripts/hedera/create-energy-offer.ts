@@ -11,6 +11,9 @@ import {
   Hbar,
   PrivateKey
 } from '@hashgraph/sdk';
+import { ethers } from 'ethers';
+
+import { signCreateOffer } from './utils/signature.js';
 
 /**
  * Creates an energy offer for selling energy
@@ -18,9 +21,10 @@ import {
  * Usage:
  *   npm run create:offer
  *   Or set environment variables:
- *   OFFER_AMOUNT_WH=1000 OFFER_PRICE_PER_KWH=15000000 npm run create:offer
+ *   SELLER_ADDRESS=0x... OFFER_AMOUNT_WH=1000 OFFER_PRICE_PER_KWH=15000000 npm run create:offer
  *
  * Note: Only registered producers (who have produced energy) can create offers
+ * The seller address must have virtual balance from previous production
  */
 async function createEnergyOffer() {
   console.log('💡 Creating energy offer...\n');
@@ -46,8 +50,18 @@ async function createEnergyOffer() {
     );
   }
 
+  // Get seller address (default to the one we used for minting)
+  const privateKeyHex = process.env.HEDERA_TESTNET_HEX_PRIVATE_KEY;
+  if (!privateKeyHex) {
+    throw new Error('❌ Missing HEDERA_TESTNET_HEX_PRIVATE_KEY in .env');
+  }
+
+  // Get seller address from environment variable
+  // This is the producer address that should have virtual balance
+  const sellerAddress = process.env.SELLER_ADDRESS || '0xCd27a4898Bf3692dC5Dc2B6dF6fe59605eB5089e'; // Admin
+
   // Get parameters from environment or use defaults for testing
-  const amountWh = process.env.OFFER_AMOUNT_WH ? parseInt(process.env.OFFER_AMOUNT_WH) : 1000; // 1000 Wh = 1 kWh
+  const amountWh = process.env.OFFER_AMOUNT_WH ? parseInt(process.env.OFFER_AMOUNT_WH) : 500; // 500 Wh = 0.5 kWh
   const pricePerKwh = process.env.OFFER_PRICE_PER_KWH
     ? parseInt(process.env.OFFER_PRICE_PER_KWH)
     : 15000000; // 0.15 EUR/kWh with 8 decimals
@@ -55,7 +69,7 @@ async function createEnergyOffer() {
   console.log(`📋 Configuration:`);
   console.log(`   Network: ${network}`);
   console.log(`   Controller: ${controllerAddress}`);
-  console.log(`   Seller: ${accountId}`);
+  console.log(`   Seller: ${sellerAddress}`);
   console.log(`   Amount: ${amountWh} Wh (${amountWh / 1000} kWh)`);
   console.log(`   Price: ${pricePerKwh / 100000000} EUR/kWh\n`);
 
@@ -66,17 +80,46 @@ async function createEnergyOffer() {
   client.setOperator(accountId, privateKey);
 
   try {
-    console.log('⏳ Creating energy offer...');
+    console.log('⏳ Generating signature...');
 
-    // Call createEnergyOffer function
+    // Generate signature deadline (1 hour from now)
+    const deadline = Math.floor(Date.now() / 1000) + 3600;
+
+    // Get chainId (296 for Hedera testnet, 295 for mainnet)
+    const chainId = network === 'mainnet' ? 295 : 296;
+
+    // Generate signature (includes contractAddress and chainId to prevent replay attacks)
+    const signature = await signCreateOffer(
+      sellerAddress,
+      amountWh,
+      pricePerKwh,
+      deadline,
+      controllerAddress,
+      chainId,
+      privateKeyHex
+    );
+
+    console.log(
+      `   Signature: ${signature.substring(0, 10)}...${signature.substring(signature.length - 10)}`
+    );
+    console.log(`   Deadline: ${new Date(deadline * 1000).toISOString()}`);
+
+    console.log('\n⏳ Creating energy offer...');
+
+    // Call createEnergyOffer function with signature
     const contractExecTx = await new ContractExecuteTransaction()
       .setContractId(ContractId.fromSolidityAddress(controllerAddress))
-      .setGas(1000000) // 1M gas
+      .setGas(2000000) // 2M gas for signature verification
       .setFunction(
         'createEnergyOffer',
-        new ContractFunctionParameters().addUint256(amountWh).addUint256(pricePerKwh)
+        new ContractFunctionParameters()
+          .addAddress(sellerAddress)
+          .addUint256(amountWh)
+          .addUint256(pricePerKwh)
+          .addUint256(deadline)
+          .addBytes(ethers.getBytes(signature))
       )
-      .setMaxTransactionFee(new Hbar(5))
+      .setMaxTransactionFee(new Hbar(10))
       .execute(client);
 
     console.log('⏳ Waiting for consensus...');
@@ -87,7 +130,7 @@ async function createEnergyOffer() {
     console.log(`\n📊 Transaction Details:`);
     console.log(`   Transaction ID: ${contractExecTx.transactionId.toString()}`);
     console.log(`   Status: ${receipt.status.toString()}`);
-    console.log(`   Seller: ${accountId}`);
+    console.log(`   Seller: ${sellerAddress}`);
     console.log(`   Amount: ${amountWh} Wh (${amountWh / 1000} kWh)`);
     console.log(`   Price: ${pricePerKwh / 100000000} EUR/kWh`);
 
@@ -115,10 +158,11 @@ async function createEnergyOffer() {
         console.error('\n💡 Solution: Your account needs more HBAR.');
       } else if (error.message.includes('CONTRACT_REVERT')) {
         console.error('\n💡 Possible reasons:');
-        console.error('   - You are not a registered producer (no energy production recorded)');
+        console.error('   - Invalid signature or expired deadline');
+        console.error('   - Seller is not a registered producer (no energy production recorded)');
         console.error('   - Insufficient available balance (virtual - locked)');
         console.error('   - Invalid amount or price (must be > 0)');
-        console.error('   - Run: npm run mint:spark (to register as producer)');
+        console.error('   - Run: npm run mint:spark (to register seller as producer)');
       } else if (error.message.includes('INVALID_CONTRACT_ID')) {
         console.error('\n💡 Solution: Check TESTNET_SPARK_CONTROLLER_ADDRESS in .env');
       }
