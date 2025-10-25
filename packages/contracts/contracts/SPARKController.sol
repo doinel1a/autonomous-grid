@@ -29,6 +29,9 @@ contract SPARKController {
   /// @notice Pyth Network EUR/USD price feed ID
   bytes32 public constant EUR_USD_PRICE_FEED_ID = 0xa995d00bb36a63cef7fd2c287dc105fc8f3d93779f062f09551b0af3e81ec30b;
 
+  /// @notice Maximum age for Pyth price feeds (60 seconds)
+  uint256 public constant MAX_PRICE_AGE = 60;
+
   /// @notice Pyth oracle contract address
   address public immutable PYTH_ORACLE_ADDRESS;
 
@@ -149,6 +152,9 @@ contract SPARKController {
   /// @notice Next offer ID counter
   uint256 private nextOfferId;
 
+  /// @notice Counter for active energy offers
+  uint256 private activeOffersCount;
+
   /// @notice All energy buy offers (global)
   EnergyBuyOffer[] public allEnergyBuyOffers;
 
@@ -158,6 +164,9 @@ contract SPARKController {
 
   /// @notice Next buy offer ID counter
   uint256 private nextBuyOfferId;
+
+  /// @notice Counter for active energy buy offers
+  uint256 private activeBuyOffersCount;
 
   // Events
 
@@ -405,6 +414,9 @@ contract SPARKController {
   /// @notice Thrown when caller is not the buyer of the buy offer
   error NotOfferBuyer();
 
+  /// @notice Thrown when Pyth oracle returns invalid price data
+  error InvalidOraclePrice();
+
   // Modifiers
 
   /**
@@ -454,20 +466,6 @@ contract SPARKController {
   }
 
   // Administrative Functions
-
-  /**
-   * @notice Test function to check HTS mint response code without reverting
-   * @dev Only callable by owner, for debugging purposes
-   * @return The response code from HTS mint call
-   */
-  function testMintToken(uint256 amount) external onlyOwner returns (int32) {
-    IHederaTokenService hts = IHederaTokenService(HTS_PRECOMPILE);
-
-    bytes[] memory metadata;
-    (int32 responseCode, , ) = hts.mintToken(SPARK_TOKEN_ADDRESS, uint64(amount), metadata);
-
-    return responseCode;
-  }
 
   /**
    * @notice Transfers ownership to a new address
@@ -735,6 +733,9 @@ contract SPARKController {
     allEnergyOffers.push(offer);
     sellerOffers[seller].push(offer);
 
+    // Increment active offers counter
+    activeOffersCount++;
+
     emit OfferCreated(offerId, seller, amountWh, pricePerKwh, timestamp);
   }
 
@@ -769,6 +770,9 @@ contract SPARKController {
 
     // Update seller offers array
     _updateSellerOffer(offer.seller, offerId, OfferStatus.CANCELLED);
+
+    // Decrement active offers counter
+    activeOffersCount--;
 
     emit OfferCancelled(offerId, offer.seller, offer.amountWh, block.timestamp);
   }
@@ -855,11 +859,18 @@ contract SPARKController {
       offer.status = OfferStatus.PARTIALLY_FILLED;
       _updateSellerOffer(seller, offerId, OfferStatus.PARTIALLY_FILLED);
 
+      // Decrement counter for partially filled, increment for new active offer (net: no change)
+      activeOffersCount--;
+      activeOffersCount++;
+
       emit OfferCreated(newOfferId, seller, remainingWh, pricePerKwh, timestamp);
     } else {
       // Full match - mark as completed
       offer.status = OfferStatus.COMPLETED;
       _updateSellerOffer(seller, offerId, OfferStatus.COMPLETED);
+
+      // Decrement active offers counter
+      activeOffersCount--;
 
       emit OfferCompleted(offerId, seller, timestamp);
     }
@@ -917,6 +928,9 @@ contract SPARKController {
     allEnergyBuyOffers.push(buyOffer);
     buyerOffers[buyer].push(buyOffer);
 
+    // Increment active buy offers counter
+    activeBuyOffersCount++;
+
     emit BuyOfferCreated(offerId, buyer, amountWh, maxPricePerKwh, timestamp);
   }
 
@@ -944,6 +958,9 @@ contract SPARKController {
 
     // Update buyer offers array
     _updateBuyerOffer(buyOffer.buyer, offerId, OfferStatus.CANCELLED);
+
+    // Decrement active buy offers counter
+    activeBuyOffersCount--;
 
     emit BuyOfferCancelled(offerId, buyOffer.buyer, buyOffer.amountWh, block.timestamp);
   }
@@ -1028,11 +1045,18 @@ contract SPARKController {
       buyOffer.status = OfferStatus.PARTIALLY_FILLED;
       _updateBuyerOffer(buyer, offerId, OfferStatus.PARTIALLY_FILLED);
 
+      // Decrement counter for partially filled, increment for new active offer (net: no change)
+      activeBuyOffersCount--;
+      activeBuyOffersCount++;
+
       emit BuyOfferCreated(newOfferId, buyer, remainingWh, maxPricePerKwh, timestamp);
     } else {
       // Full match - mark as completed
       buyOffer.status = OfferStatus.COMPLETED;
       _updateBuyerOffer(buyer, offerId, OfferStatus.COMPLETED);
+
+      // Decrement active buy offers counter
+      activeBuyOffersCount--;
 
       emit BuyOfferCompleted(offerId, buyer, timestamp);
     }
@@ -1492,13 +1516,7 @@ contract SPARKController {
    * @return Active offer count
    */
   function getActiveOffersCount() external view returns (uint256) {
-    uint256 count = 0;
-    for (uint256 i = 0; i < allEnergyOffers.length; i++) {
-      if (allEnergyOffers[i].status == OfferStatus.ACTIVE) {
-        count++;
-      }
-    }
-    return count;
+    return activeOffersCount;
   }
 
   // Energy Buy Offer Query Functions
@@ -1637,13 +1655,7 @@ contract SPARKController {
    * @return Active buy offer count
    */
   function getActiveBuyOffersCount() external view returns (uint256) {
-    uint256 count = 0;
-    for (uint256 i = 0; i < allEnergyBuyOffers.length; i++) {
-      if (allEnergyBuyOffers[i].status == OfferStatus.ACTIVE) {
-        count++;
-      }
-    }
-    return count;
+    return activeBuyOffersCount;
   }
 
   // Internal Functions
@@ -1716,8 +1728,8 @@ contract SPARKController {
     // Check deadline
     if (block.timestamp > deadline) revert SignatureExpired();
 
-    // Create message hash
-    bytes32 messageHash = keccak256(abi.encodePacked(producer, wh, deadline));
+    // Create message hash (includes contract address and chainId to prevent replay attacks)
+    bytes32 messageHash = keccak256(abi.encodePacked(producer, wh, deadline, address(this), block.chainid));
     bytes32 ethSignedMessageHash = _getEthSignedMessageHash(messageHash);
 
     // Recover signer
@@ -1779,8 +1791,8 @@ contract SPARKController {
     address producer,
     uint256 wh,
     uint256 deadline
-  ) public pure returns (bytes32) {
-    return keccak256(abi.encodePacked(producer, wh, deadline));
+  ) public view returns (bytes32) {
+    return keccak256(abi.encodePacked(producer, wh, deadline, address(this), block.chainid));
   }
 
   // Pyth Oracle Functions
@@ -1796,7 +1808,13 @@ contract SPARKController {
    */
   function getEurUsdPrice() public view returns (int64 price, int32 expo, uint publishTime) {
     IPyth pyth = IPyth(PYTH_ORACLE_ADDRESS);
-    PythStructs.Price memory priceData = pyth.getPriceUnsafe(EUR_USD_PRICE_FEED_ID);
+    PythStructs.Price memory priceData = pyth.getPriceNoOlderThan(EUR_USD_PRICE_FEED_ID, MAX_PRICE_AGE);
+
+    // Validate price is positive
+    if (priceData.price <= 0) revert InvalidOraclePrice();
+
+    // Validate exponent is negative (standard for Pyth feeds)
+    if (priceData.expo >= 0) revert InvalidOraclePrice();
 
     return (priceData.price, priceData.expo, priceData.publishTime);
   }
@@ -1814,7 +1832,13 @@ contract SPARKController {
     returns (int64 price, uint64 conf, int32 expo, uint publishTime)
   {
     IPyth pyth = IPyth(PYTH_ORACLE_ADDRESS);
-    PythStructs.Price memory priceData = pyth.getPriceUnsafe(EUR_USD_PRICE_FEED_ID);
+    PythStructs.Price memory priceData = pyth.getPriceNoOlderThan(EUR_USD_PRICE_FEED_ID, MAX_PRICE_AGE);
+
+    // Validate price is positive
+    if (priceData.price <= 0) revert InvalidOraclePrice();
+
+    // Validate exponent is negative (standard for Pyth feeds)
+    if (priceData.expo >= 0) revert InvalidOraclePrice();
 
     return (priceData.price, priceData.conf, priceData.expo, priceData.publishTime);
   }
@@ -1833,6 +1857,12 @@ contract SPARKController {
   ) public view returns (int64 price, int32 expo, uint publishTime) {
     IPyth pyth = IPyth(PYTH_ORACLE_ADDRESS);
     PythStructs.Price memory priceData = pyth.getPriceNoOlderThan(EUR_USD_PRICE_FEED_ID, maxAge);
+
+    // Validate price is positive
+    if (priceData.price <= 0) revert InvalidOraclePrice();
+
+    // Validate exponent is negative (standard for Pyth feeds)
+    if (priceData.expo >= 0) revert InvalidOraclePrice();
 
     return (priceData.price, priceData.expo, priceData.publishTime);
   }
