@@ -12,11 +12,15 @@ async function testSignature() {
   const kwh = 10;
   const deadline = Math.floor(Date.now() / 1000) + 3600;
   const privateKeyHex = process.env.HEDERA_TESTNET_HEX_PRIVATE_KEY!;
+  const contractAddress = process.env.TESTNET_SPARK_CONTROLLER_ADDRESS || '0x0000000000000000000000000000000000000000';
+  const chainId = 296; // Hedera testnet
 
   console.log('📋 Parameters:');
   console.log(`   Producer: ${producer}`);
   console.log(`   kWh: ${kwh}`);
   console.log(`   Deadline: ${deadline} (${new Date(deadline * 1000).toISOString()})`);
+  console.log(`   Contract Address: ${contractAddress}`);
+  console.log(`   Chain ID: ${chainId}`);
 
   // Create wallet
   const wallet = new ethers.Wallet(privateKeyHex);
@@ -26,17 +30,17 @@ async function testSignature() {
 
   // Generate signature
   console.log('⏳ Generating signature...');
-  const signature = await signRecordProduction(producer, kwh, deadline, privateKeyHex);
+  const signature = await signRecordProduction(producer, kwh, deadline, contractAddress, chainId, privateKeyHex);
 
   console.log(`   Signature: ${signature}`);
 
   // Verify signature locally
   console.log('\n⏳ Verifying signature...');
 
-  // Create message hash (same as contract)
+  // Create message hash (must match contract's getMessageHash - includes contractAddress and chainId)
   const messageHash = ethers.solidityPackedKeccak256(
-    ['address', 'uint256', 'uint256'],
-    [producer, kwh, deadline]
+    ['address', 'uint256', 'uint256', 'address', 'uint256'],
+    [producer, kwh, deadline, contractAddress, chainId]
   );
 
   console.log(`   Message Hash: ${messageHash}`);

@@ -90,12 +90,20 @@ async function mintSpark() {
 
     // Get private key in hex format for signing
     const privateKeyHex = process.env.HEDERA_TESTNET_HEX_PRIVATE_KEY;
+    if (!privateKeyHex) {
+      throw new Error('❌ Missing HEDERA_TESTNET_HEX_PRIVATE_KEY in .env');
+    }
 
-    // Generate signature
+    // Get chainId (296 for Hedera testnet, 295 for mainnet)
+    const chainId = network === 'mainnet' ? 295 : 296;
+
+    // Generate signature (includes contractAddress and chainId to prevent replay attacks)
     const signature = await signRecordProduction(
       evmProducerAddress,
       Math.floor(whAmount),
       deadline,
+      controllerAddress,
+      chainId,
       privateKeyHex
     );
 
