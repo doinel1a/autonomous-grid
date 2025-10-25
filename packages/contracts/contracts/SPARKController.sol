@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import "./interfaces/IHederaTokenService.sol";
-import "./interfaces/IPyth.sol";
-import "./interfaces/PythStructs.sol";
+import {IHederaTokenService} from "./interfaces/IHederaTokenService.sol";
+import {IPyth} from "./interfaces/IPyth.sol";
+import {PythStructs} from "./interfaces/PythStructs.sol";
 
 /**
  * @title SPARKController
@@ -21,10 +21,10 @@ import "./interfaces/PythStructs.sol";
  */
 contract SPARKController {
   /// @notice Hedera Token Service precompiled contract address
-  address constant HTS_PRECOMPILE = 0x0000000000000000000000000000000000000167;
+  address private constant HTS_PRECOMPILE = 0x0000000000000000000000000000000000000167;
 
   /// @notice HTS response codes
-  int32 constant HTS_SUCCESS = 22;
+  int32 private constant HTS_SUCCESS = 22;
 
   /// @notice Pyth Network EUR/USD price feed ID
   bytes32 public constant EUR_USD_PRICE_FEED_ID = 0xa995d00bb36a63cef7fd2c287dc105fc8f3d93779f062f09551b0af3e81ec30b;
