@@ -4,15 +4,17 @@
 
 SPARK is a fungible token on Hedera Token Service (HTS) that represents solar energy production in a Virtual Power Plant (VPP) system.
 
-**Token Economics:** 1000 SPARK = 1 kWh of solar energy
+**Token Economics:** 1 SPARK = 1 Wh of solar energy (with 8 decimals precision)
 
 ## Key Features
 
 - **Dynamic Supply**: No initial or maximum supply - tokens are minted as energy is produced
 - **Production Tracking**: Every mint operation records the producer, amount, and timestamp
 - **Aggregated Analytics**: Hourly and daily production statistics
-- **Transparent**: All production data is stored on-chain
-- **Energy Traceability**: Complete history of energy production per producer
+- **Energy Trading**: Peer-to-peer energy offers marketplace
+- **Virtual Balance System**: Energy credits with locked balance management
+- **Transparent**: All production data and transactions stored on-chain
+- **Energy Traceability**: Complete history of energy production and trading per producer
 
 ## Getting Started
 
@@ -326,16 +328,88 @@ When moving to production:
 
 **⚠️ Important**: Mainnet transactions cost real HBAR. Test thoroughly on testnet first!
 
+## Energy Offers System (NEW!)
+
+The SPARK system now includes a **peer-to-peer energy trading marketplace** where producers can sell their energy directly.
+
+### Creating Energy Offers
+
+As a registered producer, you can create sell offers:
+
+```bash
+# Create offer: Sell 1 kWh at 0.15 EUR/kWh
+OFFER_AMOUNT_WH=1000 OFFER_PRICE_PER_KWH=15000000 npm run create:offer
+```
+
+**What you need**:
+- ✅ Be a registered producer (have recorded at least one production)
+- ✅ Have available energy in your virtual balance
+
+### Viewing Offers
+
+```bash
+# View all active offers
+npm run query:offers
+
+# View your offers
+QUERY_TYPE=seller SELLER_ADDRESS=0.0.xxxxx npm run query:offers
+
+# View specific offer
+OFFER_ID=0 npm run query:offers
+```
+
+### Managing Your Offers
+
+```bash
+# Cancel an offer you created
+OFFER_ID=0 npm run cancel:offer
+```
+
+### How It Works
+
+1. **Create Offer**: Your energy is locked to prevent double-spending
+2. **VPP Matching**: The VPP AI agent matches your offer with buyers
+3. **Transfer**: Energy credits move from you to the buyer
+4. **Unlock**: Matched energy is unlocked and transferred
+
+### Offer Status Lifecycle
+
+- **ACTIVE**: Available for matching
+- **COMPLETED**: Fully matched and executed
+- **PARTIALLY_FILLED**: Partially matched, new offer created with remainder
+- **CANCELLED**: Cancelled by you or contract owner
+
+### Virtual Balance System
+
+Your energy balance has two components:
+
+```
+Virtual Balance:   Total energy credits you own
+Locked Balance:    Energy in active offers
+Available Balance: Virtual - Locked (can be used/sold)
+```
+
+**Important**: Locked energy cannot be transferred or consumed until the offer is matched or cancelled.
+
+For detailed information, see [Energy Offers Guide](./ENERGY_OFFERS.md).
+
+---
+
 ## Roadmap
 
-### Current Features
+### Current Features (v2.0)
 
 - ✅ HTS token creation
 - ✅ Smart contract controller
 - ✅ Production tracking and minting
-- ✅ Token burning
+- ✅ Token burning and consumption
+- ✅ Energy transfer between users
 - ✅ Query functions and analytics
 - ✅ Hourly and daily aggregates
+- ✅ **Peer-to-peer energy offers marketplace** (NEW!)
+- ✅ **Virtual balance with locked balance system** (NEW!)
+- ✅ **Full and partial offer matching** (NEW!)
+- ✅ **Grid price tracking with EUR/USD conversion** (NEW!)
 
 ### Planned Features
 
@@ -343,7 +417,7 @@ When moving to production:
 - 🔄 Web dashboard for analytics
 - 🔄 API for programmatic access
 - 🔄 Integration with IoT devices
-- 🔄 Peer-to-peer trading marketplace
+- 🔄 Automated offer matching algorithms
 - 🔄 Carbon credit calculation
 - 🔄 Multi-signature support
 
