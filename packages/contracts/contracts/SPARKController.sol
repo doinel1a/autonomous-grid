@@ -44,6 +44,12 @@ contract SPARKController {
   /// @notice Contract owner (has exclusive mint/burn/record permissions)
   address public owner;
 
+  /// @notice Grid energy price in EUR per kWh (with 8 decimals precision)
+  uint256 public gridEnergyPriceEUR;
+
+  /// @notice Timestamp of last grid price update
+  uint256 public lastGridPriceUpdate;
+
   /// @notice Production record structure
   struct ProductionRecord {
     address producer; // Producer address
@@ -165,6 +171,20 @@ contract SPARKController {
    * @param timestamp The timestamp
    */
   event EnergyConsumed(address indexed consumer, uint256 amount, uint256 timestamp);
+
+  /**
+   * @notice Emitted when grid energy price is updated
+   * @param priceEUR The price in EUR per kWh
+   * @param priceUSD The price in USD per kWh (converted at update time)
+   * @param eurUsdRate The EUR/USD exchange rate used
+   * @param timestamp The timestamp
+   */
+  event GridEnergyPriceUpdated(
+    uint256 priceEUR,
+    uint256 priceUSD,
+    int64 eurUsdRate,
+    uint256 timestamp
+  );
 
   // Custom Errors (Gas Optimization)
 
@@ -906,5 +926,34 @@ contract SPARKController {
     PythStructs.Price memory priceData = pyth.getPriceNoOlderThan(EUR_USD_PRICE_FEED_ID, maxAge);
 
     return (priceData.price, priceData.expo, priceData.publishTime);
+  }
+
+  // Grid Energy Price Functions
+
+  function setGridEnergyPrice(uint256 priceInEuroPerKwh) external onlyOwner validAmount(priceInEuroPerKwh) {
+    gridEnergyPriceEUR = priceInEuroPerKwh;
+    lastGridPriceUpdate = block.timestamp;
+
+    (int64 eurUsdPrice, int32 expo, ) = getEurUsdPrice();
+
+    uint256 priceInUSD = uint256(int256(priceInEuroPerKwh) * eurUsdPrice) / (10 ** uint32(-expo));
+
+    emit GridEnergyPriceUpdated(priceInEuroPerKwh, priceInUSD, eurUsdPrice, block.timestamp);
+  }
+
+  function getGridEnergyPriceEUR() public view returns (uint256 priceEUR, uint256 lastUpdate) {
+    return (gridEnergyPriceEUR, lastGridPriceUpdate);
+  }
+
+  function getGridEnergyPriceUSD()
+    public
+    view
+    returns (uint256 priceUSD, int64 eurUsdRate, int32 expo, uint256 lastUpdate)
+  {
+    (int64 eurUsdPrice, int32 expoValue, ) = getEurUsdPrice();
+
+    uint256 priceInUSD = uint256(int256(gridEnergyPriceEUR) * eurUsdPrice) / (10 ** uint32(-expoValue));
+
+    return (priceInUSD, eurUsdPrice, expoValue, lastGridPriceUpdate);
   }
 }
