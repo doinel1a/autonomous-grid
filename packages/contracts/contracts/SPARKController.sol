@@ -695,19 +695,27 @@ contract SPARKController {
 
   /**
    * @notice Creates a new energy offer for selling energy
+   * @param seller The producer address who is selling the energy
    * @param amountWh The amount of energy to sell in Wh
    * @param pricePerKwh The price in EUR per kWh (with 8 decimals precision)
+   * @param deadline Signature expiration timestamp
+   * @param signature Signature from the owner authorizing this operation
    *
+   * @dev Uses signature verification instead of msg.sender check (Hedera compatible)
    * @dev Only registered producers (who have produced energy) can create offers
    * @dev Seller must have sufficient available balance (virtual - locked)
    * @dev Locks the energy in the seller's balance
    * @dev Emits OfferCreated event
    */
   function createEnergyOffer(
+    address seller,
     uint256 amountWh,
-    uint256 pricePerKwh
-  ) external validAmount(amountWh) validAmount(pricePerKwh) {
-    address seller = msg.sender;
+    uint256 pricePerKwh,
+    uint256 deadline,
+    bytes memory signature
+  ) external validAddress(seller) validAmount(amountWh) validAmount(pricePerKwh) {
+    // Verify signature from owner
+    _verifyOfferSignature(seller, amountWh, pricePerKwh, deadline, signature);
 
     // Check that seller is a registered producer (has produced energy)
     if (producerTotalProduction[seller] == 0) revert NotAProducer();
@@ -748,12 +756,18 @@ contract SPARKController {
   /**
    * @notice Cancels an active energy offer
    * @param offerId The ID of the offer to cancel
+   * @param deadline Signature expiration timestamp
+   * @param signature Signature from the owner authorizing this operation
    *
+   * @dev Uses signature verification instead of msg.sender check (Hedera compatible)
    * @dev Only seller or owner can cancel
    * @dev Unlocks the energy in the seller's balance
    * @dev Emits OfferCancelled event
    */
-  function cancelEnergyOffer(uint256 offerId) external {
+  function cancelEnergyOffer(uint256 offerId, uint256 deadline, bytes memory signature) external {
+    // Verify signature from owner
+    _verifyCancelOfferSignature(offerId, deadline, signature);
+
     // Validate offer ID
     if (offerId >= allEnergyOffers.length) revert InvalidOfferId();
 
@@ -761,9 +775,6 @@ contract SPARKController {
 
     // Check offer is active
     if (offer.status != OfferStatus.ACTIVE) revert OfferNotActive();
-
-    // Check caller is seller or owner
-    if (msg.sender != offer.seller && msg.sender != owner) revert NotOfferSeller();
 
     // Convert Wh to SPARK tokens
     uint256 sparkAmount = whToSpark(offer.amountWh);
@@ -883,18 +894,26 @@ contract SPARKController {
 
   /**
    * @notice Creates a new energy buy offer
+   * @param buyer The buyer address who wants to purchase energy
    * @param amountWh The amount of energy to purchase in Wh
    * @param maxPricePerKwh The maximum price willing to pay in EUR per kWh (with 8 decimals precision)
+   * @param deadline Signature expiration timestamp
+   * @param signature Signature from the owner authorizing this operation
    *
+   * @dev Uses signature verification instead of msg.sender check (Hedera compatible)
    * @dev Anyone can create buy offers (no registration required)
    * @dev No lock of virtual balance for buyers
    * @dev Emits BuyOfferCreated event
    */
   function createEnergyBuyOffer(
+    address buyer,
     uint256 amountWh,
-    uint256 maxPricePerKwh
-  ) external validAmount(amountWh) validAmount(maxPricePerKwh) {
-    address buyer = msg.sender;
+    uint256 maxPricePerKwh,
+    uint256 deadline,
+    bytes memory signature
+  ) external validAddress(buyer) validAmount(amountWh) validAmount(maxPricePerKwh) {
+    // Verify signature from owner
+    _verifyBuyOfferSignature(buyer, amountWh, maxPricePerKwh, deadline, signature);
 
     // Create buy offer
     uint256 offerId = nextBuyOfferId++;
@@ -922,11 +941,17 @@ contract SPARKController {
   /**
    * @notice Cancels an active energy buy offer
    * @param offerId The ID of the buy offer to cancel
+   * @param deadline Signature expiration timestamp
+   * @param signature Signature from the owner authorizing this operation
    *
+   * @dev Uses signature verification instead of msg.sender check (Hedera compatible)
    * @dev Only buyer or owner can cancel
    * @dev Emits BuyOfferCancelled event
    */
-  function cancelEnergyBuyOffer(uint256 offerId) external {
+  function cancelEnergyBuyOffer(uint256 offerId, uint256 deadline, bytes memory signature) external {
+    // Verify signature from owner
+    _verifyCancelBuyOfferSignature(offerId, deadline, signature);
+
     // Validate offer ID
     if (offerId >= allEnergyBuyOffers.length) revert InvalidBuyOfferId();
 
@@ -934,9 +959,6 @@ contract SPARKController {
 
     // Check offer is active
     if (buyOffer.status != OfferStatus.ACTIVE) revert BuyOfferNotActive();
-
-    // Check caller is buyer or owner
-    if (msg.sender != buyOffer.buyer && msg.sender != owner) revert NotOfferBuyer();
 
     // Update offer status
     buyOffer.status = OfferStatus.CANCELLED;
@@ -1694,6 +1716,122 @@ contract SPARKController {
 
     // Create message hash (includes contract address and chainId to prevent replay attacks)
     bytes32 messageHash = keccak256(abi.encodePacked(producer, wh, deadline, address(this), block.chainid));
+    bytes32 ethSignedMessageHash = _getEthSignedMessageHash(messageHash);
+
+    // Recover signer
+    address signer = _recoverSigner(ethSignedMessageHash, signature);
+
+    // Verify signer is owner
+    if (signer != owner) revert InvalidSignature();
+  }
+
+  /**
+   * @notice Verifies that a signature was created by the owner for creating an offer
+   * @param seller The seller address
+   * @param amountWh The Wh amount
+   * @param pricePerKwh The price per kWh
+   * @param deadline The deadline timestamp (must be in the future)
+   * @param signature The signature bytes
+   */
+  function _verifyOfferSignature(
+    address seller,
+    uint256 amountWh,
+    uint256 pricePerKwh,
+    uint256 deadline,
+    bytes memory signature
+  ) internal view {
+    // Check deadline
+    if (block.timestamp > deadline) revert SignatureExpired();
+
+    // Create message hash (includes contract address and chainId to prevent replay attacks)
+    bytes32 messageHash = keccak256(
+      abi.encodePacked(seller, amountWh, pricePerKwh, deadline, address(this), block.chainid)
+    );
+    bytes32 ethSignedMessageHash = _getEthSignedMessageHash(messageHash);
+
+    // Recover signer
+    address signer = _recoverSigner(ethSignedMessageHash, signature);
+
+    // Verify signer is owner
+    if (signer != owner) revert InvalidSignature();
+  }
+
+  /**
+   * @notice Verifies that a signature was created by the owner for creating a buy offer
+   * @param buyer The buyer address
+   * @param amountWh The Wh amount
+   * @param maxPricePerKwh The max price per kWh
+   * @param deadline The deadline timestamp (must be in the future)
+   * @param signature The signature bytes
+   */
+  function _verifyBuyOfferSignature(
+    address buyer,
+    uint256 amountWh,
+    uint256 maxPricePerKwh,
+    uint256 deadline,
+    bytes memory signature
+  ) internal view {
+    // Check deadline
+    if (block.timestamp > deadline) revert SignatureExpired();
+
+    // Create message hash (includes contract address and chainId to prevent replay attacks)
+    bytes32 messageHash = keccak256(
+      abi.encodePacked(buyer, amountWh, maxPricePerKwh, deadline, address(this), block.chainid)
+    );
+    bytes32 ethSignedMessageHash = _getEthSignedMessageHash(messageHash);
+
+    // Recover signer
+    address signer = _recoverSigner(ethSignedMessageHash, signature);
+
+    // Verify signer is owner
+    if (signer != owner) revert InvalidSignature();
+  }
+
+  /**
+   * @notice Verifies that a signature was created by the owner for canceling an offer
+   * @param offerId The offer ID to cancel
+   * @param deadline The deadline timestamp (must be in the future)
+   * @param signature The signature bytes
+   */
+  function _verifyCancelOfferSignature(
+    uint256 offerId,
+    uint256 deadline,
+    bytes memory signature
+  ) internal view {
+    // Check deadline
+    if (block.timestamp > deadline) revert SignatureExpired();
+
+    // Create message hash (includes contract address and chainId to prevent replay attacks)
+    bytes32 messageHash = keccak256(
+      abi.encodePacked(offerId, deadline, address(this), block.chainid)
+    );
+    bytes32 ethSignedMessageHash = _getEthSignedMessageHash(messageHash);
+
+    // Recover signer
+    address signer = _recoverSigner(ethSignedMessageHash, signature);
+
+    // Verify signer is owner
+    if (signer != owner) revert InvalidSignature();
+  }
+
+  /**
+   * @notice Verifies that a signature was created by the owner for canceling a buy offer
+   * @param offerId The buy offer ID to cancel
+   * @param deadline The deadline timestamp (must be in the future)
+   * @param signature The signature bytes
+   */
+  function _verifyCancelBuyOfferSignature(
+    uint256 offerId,
+    uint256 deadline,
+    bytes memory signature
+  ) internal view {
+    // Check deadline
+    if (block.timestamp > deadline) revert SignatureExpired();
+
+    // Create message hash (includes contract address and chainId to prevent replay attacks)
+    bytes32 messageHash = keccak256(
+      abi.encodePacked(offerId, deadline, address(this), block.chainid)
+    );
     bytes32 ethSignedMessageHash = _getEthSignedMessageHash(messageHash);
 
     // Recover signer
