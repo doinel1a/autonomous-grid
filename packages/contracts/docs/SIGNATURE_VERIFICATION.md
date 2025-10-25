@@ -31,8 +31,10 @@ modifier onlyOwner() {
 
 1. **Cryptographic Proof**: Mathematical certainty that owner authorized the operation
 2. **Replay Protection**: Deadline prevents reusing old signatures
-3. **No Trust Required**: Signature verification is trustless (uses cryptography)
-4. **Hedera Compatible**: Works with Hedera's transaction model
+3. **Cross-Chain Protection**: ChainId prevents signatures from being replayed on different networks (testnet → mainnet)
+4. **Cross-Contract Protection**: Contract address prevents signatures from being used on different contract deployments
+5. **No Trust Required**: Signature verification is trustless (uses cryptography)
+6. **Hedera Compatible**: Works with Hedera's transaction model
 
 ---
 
@@ -47,14 +49,18 @@ modifier onlyOwner() {
 │  1. Create Message                                           │
 │     ├─ producer: address                                     │
 │     ├─ kwh: uint256                                          │
-│     └─ deadline: uint256                                     │
+│     ├─ deadline: uint256                                     │
+│     ├─ contractAddress: address  ← PREVENTS CROSS-CONTRACT   │
+│     └─ chainId: uint256          ← PREVENTS CROSS-CHAIN      │
 │                                                              │
 │  2. Hash Message                                             │
-│     messageHash = keccak256(producer, kwh, deadline)         │
+│     messageHash = keccak256(                                 │
+│       producer, kwh, deadline, contractAddress, chainId      │
+│     )                                                        │
 │                                                              │
 │  3. Sign Message                                             │
 │     signature = wallet.signMessage(messageHash)              │
-│     ├─ Uses HEDERA_TESTNET_HEX_PRIVATE_KEY                       │
+│     ├─ Uses HEDERA_TESTNET_HEX_PRIVATE_KEY                   │
 │     └─ Returns 65 bytes (r + s + v)                          │
 └─────────────────────────────────────────────────────────────┘
                             ↓
@@ -66,8 +72,10 @@ modifier onlyOwner() {
 │  1. Check Deadline                                           │
 │     require(block.timestamp <= deadline)                     │
 │                                                              │
-│  2. Recreate Message Hash                                    │
-│     messageHash = keccak256(producer, kwh, deadline)         │
+│  2. Recreate Message Hash (MUST MATCH OFF-CHAIN)             │
+│     messageHash = keccak256(                                 │
+│       producer, kwh, deadline, address(this), block.chainid  │
+│     )                                                        │
 │                                                              │
 │  3. Add Ethereum Prefix                                      │
 │     ethHash = keccak256("\x19Ethereum Signed Message:\n32")  │
@@ -98,15 +106,17 @@ export async function signRecordProduction(
   producer: string,
   kwh: number,
   deadline: number,
+  contractAddress: string,  // ← NEW: Prevents cross-contract replay
+  chainId: number,           // ← NEW: Prevents cross-chain replay (296 = testnet, 295 = mainnet)
   privateKey: string
 ): Promise<string> {
   // 1. Create wallet from private key
   const wallet = new ethers.Wallet(privateKey);
 
-  // 2. Create message hash (same format as contract)
+  // 2. Create message hash (MUST match contract's getMessageHash)
   const messageHash = ethers.solidityPackedKeccak256(
-    ['address', 'uint256', 'uint256'],
-    [producer, kwh, deadline]
+    ['address', 'uint256', 'uint256', 'address', 'uint256'],
+    [producer, kwh, deadline, contractAddress, chainId]
   );
 
   // 3. Sign the message hash
@@ -120,8 +130,13 @@ export async function signRecordProduction(
 **Key Points**:
 
 - Uses `ethers.solidityPackedKeccak256()` to match Solidity's `keccak256(abi.encodePacked(...))`
+- **CRITICAL**: Hash includes `contractAddress` and `chainId` to prevent replay attacks
 - `wallet.signMessage()` automatically adds Ethereum prefix `"\x19Ethereum Signed Message:\n32"`
 - Returns signature in format: `0x${r}${s}${v}` (65 bytes total)
+
+**Hedera Chain IDs**:
+- **Testnet**: 296
+- **Mainnet**: 295
 
 ### On-Chain Signature Verification
 
@@ -139,8 +154,11 @@ function _verifySignature(
   // 1. Check deadline hasn't expired
   if (block.timestamp > deadline) revert SignatureExpired();
 
-  // 2. Recreate the message hash (same as off-chain)
-  bytes32 messageHash = keccak256(abi.encodePacked(producer, kwh, deadline));
+  // 2. Recreate the message hash (MUST match off-chain hash)
+  // Includes address(this) and block.chainid to prevent replay attacks
+  bytes32 messageHash = keccak256(
+    abi.encodePacked(producer, kwh, deadline, address(this), block.chainid)
+  );
 
   // 3. Add Ethereum signed message prefix
   bytes32 ethSignedMessageHash = _getEthSignedMessageHash(messageHash);
@@ -176,7 +194,7 @@ function _recoverSigner(
   bytes memory signature
 ) internal pure returns (address) {
   // 1. Verify signature length (65 bytes)
-  require(signature.length == 65, 'Invalid signature length');
+  if (signature.length != 65) revert InvalidSignatureLength();
 
   // 2. Extract r, s, v from signature
   bytes32 r;
@@ -198,7 +216,7 @@ function _recoverSigner(
   }
 
   // 4. Verify v is valid (must be 27 or 28)
-  require(v == 27 || v == 28, 'Invalid signature version');
+  if (v != 27 && v != 28) revert InvalidSignatureVersion();
 
   // 5. Recover signer address using ecrecover precompile
   return ecrecover(ethSignedMessageHash, v, r, s);
@@ -786,15 +804,90 @@ HEDERA_TESTNET_HEX_PRIVATE_KEY='302e020100300...'
 
 ---
 
+## Security Updates (v2.0)
+
+### ⚠️ BREAKING CHANGE: Enhanced Replay Attack Protection
+
+**Version**: 2.0
+**Date**: October 2025
+**Status**: ✅ IMPLEMENTED
+
+#### What Changed
+
+The signature format now includes **contract address** and **chain ID** to prevent replay attacks:
+
+**Before (v1.0)**:
+```typescript
+messageHash = keccak256(producer, kwh, deadline)
+```
+
+**After (v2.0)**:
+```typescript
+messageHash = keccak256(producer, kwh, deadline, contractAddress, chainId)
+```
+
+#### Why This Matters
+
+**Without these protections**, signatures could be:
+1. **Replayed on mainnet** if created for testnet (same signature works on both)
+2. **Replayed on different contract** deployments (same signature works on all versions)
+
+**With v2.0 protections**:
+- ✅ Signatures are bound to specific contract address
+- ✅ Signatures are bound to specific chain (testnet/mainnet)
+- ✅ Cannot reuse signatures across deployments
+- ✅ Cannot reuse signatures across networks
+
+#### Migration Guide
+
+**Old signatures (v1.0) will NOT work** with v2.0 contract.
+
+**Action Required**:
+1. Update signature generation code to include `contractAddress` and `chainId`
+2. Regenerate all signatures after contract deployment
+3. Update all systems that generate signatures
+
+**Example Migration**:
+
+```typescript
+// ❌ OLD (v1.0) - WILL FAIL
+const signature = await signRecordProduction(
+  producer,
+  kwh,
+  deadline,
+  privateKey
+);
+
+// ✅ NEW (v2.0) - REQUIRED
+const signature = await signRecordProduction(
+  producer,
+  kwh,
+  deadline,
+  contractAddress,  // ← ADD THIS
+  chainId,          // ← ADD THIS (296 for testnet, 295 for mainnet)
+  privateKey
+);
+```
+
+**Scripts Updated**:
+- ✅ `scripts/hedera/utils/signature.ts`
+- ✅ `scripts/hedera/mint-spark.ts`
+- ✅ `scripts/hedera/test-signature.ts`
+
+---
+
 ## Summary
 
 The SPARK signature verification system provides:
 
 ✅ **Security**: Cryptographic proof of authorization
 ✅ **Hedera Compatibility**: Works with ContractExecuteTransaction
-✅ **Replay Protection**: Deadline-based expiration
+✅ **Replay Protection**: Deadline-based expiration + cross-chain/cross-contract protection
 ✅ **Gas Efficient**: Single ecrecover call (~3,000 gas)
 ✅ **Simple**: No nonce management required
 ✅ **Testable**: Can verify signatures off-chain before sending
 
-**Key Takeaway**: Owner address MUST be derived from private key, not from account ID conversion!
+**Key Takeaways**:
+- Owner address MUST be derived from private key, not from account ID conversion
+- Signatures are bound to specific contract and chain (v2.0+)
+- Old signatures (v1.0) will not work with updated contract (v2.0)

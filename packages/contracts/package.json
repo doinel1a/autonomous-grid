@@ -27,7 +27,22 @@
     "transfer:supply-key": "tsx scripts/hedera/transfer-supply-key.ts",
     "mint:spark": "tsx scripts/hedera/mint-spark.ts",
     "burn:spark": "tsx scripts/hedera/burn-spark.ts",
-    "query:production": "tsx scripts/hedera/query-production.ts"
+    "query:production": "tsx scripts/hedera/query-production.ts",
+    "transfer:energy": "tsx scripts/hedera/transfer-energy.ts",
+    "consume:energy": "tsx scripts/hedera/consume-energy.ts",
+    "query:balance": "tsx scripts/hedera/query-balance.ts",
+    "query:transactions": "tsx scripts/hedera/query-transactions.ts",
+    "query:eur-usd-price": "tsx scripts/hedera/query-eur-usd-price.ts",
+    "set:grid-price": "tsx scripts/hedera/set-grid-price.ts",
+    "query:grid-price": "tsx scripts/hedera/query-grid-price.ts",
+    "create:offer": "tsx scripts/hedera/create-energy-offer.ts",
+    "cancel:offer": "tsx scripts/hedera/cancel-energy-offer.ts",
+    "match:offer": "tsx scripts/hedera/match-energy-offer.ts",
+    "query:offers": "tsx scripts/hedera/query-offers.ts",
+    "create:buy-offer": "tsx scripts/hedera/create-energy-buy-offer.ts",
+    "cancel:buy-offer": "tsx scripts/hedera/cancel-energy-buy-offer.ts",
+    "match:buy-offer": "tsx scripts/hedera/match-energy-buy-offer.ts",
+    "query:buy-offers": "tsx scripts/hedera/query-buy-offers.ts"
   },
   "dependencies": {
     "@hashgraph/sdk": "2.75.0",

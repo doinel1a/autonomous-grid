@@ -23,6 +23,7 @@ async function deploySPARKController() {
   const accountId = process.env.HEDERA_TESTNET_ACCOUNT_ID;
   const privateKeyStr = process.env.HEDERA_DER_TESTNET_PRIVATE_KEY;
   const tokenIdStr = process.env.TESTNET_SPARK_TOKEN_ID;
+  const pythOracleAddress = process.env.TESTNET_PYTH_PRICE_READER_ADDRESS;
 
   if (!accountId || !privateKeyStr) {
     throw new Error(
@@ -39,10 +40,15 @@ async function deploySPARKController() {
     );
   }
 
+  if (!pythOracleAddress) {
+    throw new Error('❌ TESTNET_PYTH_PRICE_READER_ADDRESS not found in .env');
+  }
+
   console.log(`📋 Configuration:`);
   console.log(`   Network: ${network}`);
   console.log(`   Deployer Account: ${accountId}`);
-  console.log(`   SPARK Token ID: ${tokenIdStr}\n`);
+  console.log(`   SPARK Token ID: ${tokenIdStr}`);
+  console.log(`   Pyth Oracle: ${pythOracleAddress}\n`);
 
   // Initialize Hedera client
   const client = network === 'mainnet' ? Client.forMainnet() : Client.forTestnet();
@@ -70,13 +76,17 @@ async function deploySPARKController() {
 
     console.log(`   Token Address (EVM format): ${tokenAddress}`);
     console.log(`   Owner Address (from private key): ${ownerAddress}`);
+    console.log(`   Pyth Oracle Address: ${pythOracleAddress}`);
 
     // Deploy the contract with constructor parameters
     const contractCreateTx = await new ContractCreateFlow()
-      .setGas(3000000) // 3M gas for contract deployment (SPARKController is a large contract)
+      .setGas(4000000) // 4M gas for contract deployment (SPARKController is a large contract)
       .setBytecode(contractBytecode)
       .setConstructorParameters(
-        new ContractFunctionParameters().addAddress(tokenAddress).addAddress(ownerAddress)
+        new ContractFunctionParameters()
+          .addAddress(tokenAddress)
+          .addAddress(ownerAddress)
+          .addAddress(pythOracleAddress)
       )
       .execute(client);
 

@@ -57,13 +57,13 @@ async function queryProduction() {
 
   try {
     // Convert producer address to proper format
-    let evmProducerAddress: string;
-    if (producerAddress.includes('.')) {
-      evmProducerAddress = accountIdToAddress(producerAddress);
-      console.log(`   Producer EVM Address: ${evmProducerAddress}\n`);
-    } else {
-      evmProducerAddress = producerAddress;
-    }
+    let evmProducerAddress: string = '0xd7b4967Edbc170774345b4a84F2E2c2CD3a3f102';
+    // if (producerAddress.includes('.')) {
+    //   evmProducerAddress = accountIdToAddress(producerAddress);
+    //   console.log(`   Producer EVM Address: ${evmProducerAddress}\n`);
+    // } else {
+    //   evmProducerAddress = producerAddress;
+    // }
 
     const contractId = ContractId.fromSolidityAddress(controllerAddress);
 
@@ -80,17 +80,17 @@ async function queryProduction() {
     const totalProductionResult = await totalProductionQuery.execute(client);
     const totalProduction = totalProductionResult.getUint256(0);
 
-    console.log('⏳ Querying total production in kWh...');
-    const totalProductionKwhQuery = new ContractCallQuery()
+    console.log('⏳ Querying total production in Wh...');
+    const totalProductionWhQuery = new ContractCallQuery()
       .setContractId(contractId)
       .setGas(100000)
       .setFunction(
-        'getTotalProductionInKwh',
+        'getTotalProductionInWh',
         new ContractFunctionParameters().addAddress(evmProducerAddress)
       );
 
-    const totalProductionKwhResult = await totalProductionKwhQuery.execute(client);
-    const totalProductionKwh = totalProductionKwhResult.getUint256(0);
+    const totalProductionWhResult = await totalProductionWhQuery.execute(client);
+    const totalProductionWh = totalProductionWhResult.getUint256(0);
 
     // Query record count
     console.log('⏳ Querying record count...');
@@ -122,7 +122,7 @@ async function queryProduction() {
     console.log(`Producer: ${producerAddress}`);
     console.log('-'.repeat(60));
     console.log(`Total Production:     ${totalProduction.toString()} SPARK`);
-    console.log(`                      ${totalProductionKwh.toString()} kWh`);
+    console.log(`                      ${totalProductionWh.toString()} Wh`);
     console.log(`Production Records:   ${recordCount.toString()}`);
     console.log(`Global Records:       ${globalRecordCount.toString()}`);
     console.log('='.repeat(60));
@@ -132,9 +132,9 @@ async function queryProduction() {
       console.log('   Create your first record: npm run mint:spark');
     } else {
       console.log('\n⚡ Energy Economics:');
-      console.log(`   1000 SPARK = 1 kWh`);
+      console.log(`   1 SPARK = 1 Wh`);
       console.log(
-        `   This producer has generated ${totalProductionKwh.toString()} kWh of solar energy`
+        `   This producer has generated ${totalProductionWh.toString()} Wh of solar energy`
       );
 
       // Query a sample of recent records (paginated)
