@@ -85,12 +85,22 @@ contract SPARKController {
     PARTIALLY_FILLED // Offer was partially matched and a new offer was created
   }
 
-  /// @notice Energy offer structure
+  /// @notice Energy sell offer structure
   struct EnergyOffer {
     uint256 offerId; // Unique offer ID
     address seller; // Seller address
     uint256 amountWh; // Amount in Wh available for sale
     uint256 pricePerKwh; // Price in EUR per kWh (with 8 decimals precision)
+    uint256 timestamp; // Creation timestamp
+    OfferStatus status; // Offer status
+  }
+
+  /// @notice Energy buy offer structure
+  struct EnergyBuyOffer {
+    uint256 offerId; // Unique offer ID
+    address buyer; // Buyer address
+    uint256 amountWh; // Amount in Wh to purchase
+    uint256 maxPricePerKwh; // Maximum price in EUR per kWh (with 8 decimals precision)
     uint256 timestamp; // Creation timestamp
     OfferStatus status; // Offer status
   }
@@ -138,6 +148,16 @@ contract SPARKController {
 
   /// @notice Next offer ID counter
   uint256 private nextOfferId;
+
+  /// @notice All energy buy offers (global)
+  EnergyBuyOffer[] public allEnergyBuyOffers;
+
+  /// @notice Energy buy offers per buyer
+  /// @dev buyer => EnergyBuyOffer[]
+  mapping(address => EnergyBuyOffer[]) public buyerOffers;
+
+  /// @notice Next buy offer ID counter
+  uint256 private nextBuyOfferId;
 
   // Events
 
@@ -276,6 +296,64 @@ contract SPARKController {
    */
   event OfferCompleted(uint256 indexed offerId, address indexed seller, uint256 timestamp);
 
+  /**
+   * @notice Emitted when an energy buy offer is created
+   * @param offerId The unique buy offer ID
+   * @param buyer The buyer address
+   * @param amountWh The amount in Wh
+   * @param maxPricePerKwh The maximum price in EUR per kWh
+   * @param timestamp The timestamp
+   */
+  event BuyOfferCreated(
+    uint256 indexed offerId,
+    address indexed buyer,
+    uint256 amountWh,
+    uint256 maxPricePerKwh,
+    uint256 timestamp
+  );
+
+  /**
+   * @notice Emitted when an energy buy offer is matched
+   * @param offerId The buy offer ID
+   * @param buyer The buyer address
+   * @param seller The seller address
+   * @param amountWh The amount matched in Wh
+   * @param pricePerKwh The actual price in EUR per kWh
+   * @param timestamp The timestamp
+   * @param newOfferId The new buy offer ID if partially filled (0 if fully matched)
+   */
+  event BuyOfferMatched(
+    uint256 indexed offerId,
+    address indexed buyer,
+    address indexed seller,
+    uint256 amountWh,
+    uint256 pricePerKwh,
+    uint256 timestamp,
+    uint256 newOfferId
+  );
+
+  /**
+   * @notice Emitted when an energy buy offer is cancelled
+   * @param offerId The buy offer ID
+   * @param buyer The buyer address
+   * @param amountWh The remaining amount in Wh
+   * @param timestamp The timestamp
+   */
+  event BuyOfferCancelled(
+    uint256 indexed offerId,
+    address indexed buyer,
+    uint256 amountWh,
+    uint256 timestamp
+  );
+
+  /**
+   * @notice Emitted when an energy buy offer is completed
+   * @param offerId The buy offer ID
+   * @param buyer The buyer address
+   * @param timestamp The timestamp
+   */
+  event BuyOfferCompleted(uint256 indexed offerId, address indexed buyer, uint256 timestamp);
+
   // Custom Errors (Gas Optimization)
 
   /// @notice Thrown when caller is not the owner
@@ -317,6 +395,15 @@ contract SPARKController {
 
   /// @notice Thrown when caller is not a registered producer
   error NotAProducer();
+
+  /// @notice Thrown when buy offer does not exist or ID is invalid
+  error InvalidBuyOfferId();
+
+  /// @notice Thrown when trying to cancel/modify a buy offer that is not active
+  error BuyOfferNotActive();
+
+  /// @notice Thrown when caller is not the buyer of the buy offer
+  error NotOfferBuyer();
 
   // Modifiers
 
@@ -796,6 +883,179 @@ contract SPARKController {
     }
   }
 
+  // Energy Buy Offer Functions
+
+  /**
+   * @notice Creates a new energy buy offer
+   * @param amountWh The amount of energy to purchase in Wh
+   * @param maxPricePerKwh The maximum price willing to pay in EUR per kWh (with 8 decimals precision)
+   *
+   * @dev Anyone can create buy offers (no registration required)
+   * @dev No lock of virtual balance for buyers
+   * @dev Emits BuyOfferCreated event
+   */
+  function createEnergyBuyOffer(
+    uint256 amountWh,
+    uint256 maxPricePerKwh
+  ) external validAmount(amountWh) validAmount(maxPricePerKwh) {
+    address buyer = msg.sender;
+
+    // Create buy offer
+    uint256 offerId = nextBuyOfferId++;
+    uint256 timestamp = block.timestamp;
+
+    EnergyBuyOffer memory buyOffer = EnergyBuyOffer({
+      offerId: offerId,
+      buyer: buyer,
+      amountWh: amountWh,
+      maxPricePerKwh: maxPricePerKwh,
+      timestamp: timestamp,
+      status: OfferStatus.ACTIVE
+    });
+
+    // Store buy offer
+    allEnergyBuyOffers.push(buyOffer);
+    buyerOffers[buyer].push(buyOffer);
+
+    emit BuyOfferCreated(offerId, buyer, amountWh, maxPricePerKwh, timestamp);
+  }
+
+  /**
+   * @notice Cancels an active energy buy offer
+   * @param offerId The ID of the buy offer to cancel
+   *
+   * @dev Only buyer or owner can cancel
+   * @dev Emits BuyOfferCancelled event
+   */
+  function cancelEnergyBuyOffer(uint256 offerId) external {
+    // Validate offer ID
+    if (offerId >= allEnergyBuyOffers.length) revert InvalidBuyOfferId();
+
+    EnergyBuyOffer storage buyOffer = allEnergyBuyOffers[offerId];
+
+    // Check offer is active
+    if (buyOffer.status != OfferStatus.ACTIVE) revert BuyOfferNotActive();
+
+    // Check caller is buyer or owner
+    if (msg.sender != buyOffer.buyer && msg.sender != owner) revert NotOfferBuyer();
+
+    // Update offer status
+    buyOffer.status = OfferStatus.CANCELLED;
+
+    // Update buyer offers array
+    _updateBuyerOffer(buyOffer.buyer, offerId, OfferStatus.CANCELLED);
+
+    emit BuyOfferCancelled(offerId, buyOffer.buyer, buyOffer.amountWh, block.timestamp);
+  }
+
+  /**
+   * @notice Matches an energy buy offer with a seller (fully or partially)
+   * @param offerId The ID of the buy offer to match
+   * @param seller The seller address
+   * @param amountWh The amount to match in Wh
+   *
+   * @dev Only callable by owner (VPP AI)
+   * @dev If partial match, creates new buy offer with remaining amount
+   * @dev Transfers energy from seller to buyer
+   * @dev Seller must have sufficient available balance
+   * @dev Emits BuyOfferMatched and optionally BuyOfferCompleted events
+   */
+  function matchEnergyBuyOffer(
+    uint256 offerId,
+    address seller,
+    uint256 amountWh
+  ) external onlyOwner validAddress(seller) validAmount(amountWh) {
+    // Validate offer ID
+    if (offerId >= allEnergyBuyOffers.length) revert InvalidBuyOfferId();
+
+    EnergyBuyOffer storage buyOffer = allEnergyBuyOffers[offerId];
+
+    // Check offer is active
+    if (buyOffer.status != OfferStatus.ACTIVE) revert BuyOfferNotActive();
+
+    // Check amount is not greater than offer amount
+    if (amountWh > buyOffer.amountWh) revert InvalidAmount();
+
+    address buyer = buyOffer.buyer;
+    uint256 maxPricePerKwh = buyOffer.maxPricePerKwh;
+    uint256 timestamp = block.timestamp;
+
+    // Convert Wh to SPARK tokens
+    uint256 sparkAmount = whToSpark(amountWh);
+
+    // Check seller has sufficient available balance
+    uint256 availableBalance = virtualBalance[seller] - lockedBalance[seller];
+    if (availableBalance < sparkAmount) revert InsufficientAvailableBalance();
+
+    // Transfer energy from seller to buyer (updates virtual balances)
+    virtualBalance[seller] -= sparkAmount;
+    virtualBalance[buyer] += sparkAmount;
+
+    // Create transaction record
+    TransactionRecord memory txRecord = TransactionRecord({
+      seller: seller,
+      buyer: buyer,
+      amount: sparkAmount,
+      timestamp: timestamp
+    });
+
+    allTransactions.push(txRecord);
+    userTransactions[seller].push(txRecord);
+    userTransactions[buyer].push(txRecord);
+
+    uint256 newOfferId = 0;
+
+    // Check if partial or full match
+    if (amountWh < buyOffer.amountWh) {
+      // Partial match - create new buy offer with remaining amount
+      uint256 remainingWh = buyOffer.amountWh - amountWh;
+
+      // Create new buy offer
+      newOfferId = nextBuyOfferId++;
+      EnergyBuyOffer memory newBuyOffer = EnergyBuyOffer({
+        offerId: newOfferId,
+        buyer: buyer,
+        amountWh: remainingWh,
+        maxPricePerKwh: maxPricePerKwh,
+        timestamp: timestamp,
+        status: OfferStatus.ACTIVE
+      });
+
+      allEnergyBuyOffers.push(newBuyOffer);
+      buyerOffers[buyer].push(newBuyOffer);
+
+      // Update original offer status
+      buyOffer.status = OfferStatus.PARTIALLY_FILLED;
+      _updateBuyerOffer(buyer, offerId, OfferStatus.PARTIALLY_FILLED);
+
+      emit BuyOfferCreated(newOfferId, buyer, remainingWh, maxPricePerKwh, timestamp);
+    } else {
+      // Full match - mark as completed
+      buyOffer.status = OfferStatus.COMPLETED;
+      _updateBuyerOffer(buyer, offerId, OfferStatus.COMPLETED);
+
+      emit BuyOfferCompleted(offerId, buyer, timestamp);
+    }
+
+    emit BuyOfferMatched(offerId, buyer, seller, amountWh, maxPricePerKwh, timestamp, newOfferId);
+  }
+
+  /**
+   * @notice Internal function to update buyer's offer array
+   * @param buyer The buyer address
+   * @param offerId The offer ID
+   * @param status The new status
+   */
+  function _updateBuyerOffer(address buyer, uint256 offerId, OfferStatus status) internal {
+    EnergyBuyOffer[] storage offers = buyerOffers[buyer];
+    for (uint256 i = 0; i < offers.length; i++) {
+      if (offers[i].offerId == offerId) {
+        offers[i].status = status;
+        break;
+      }
+    }
+  }
+
   // Query Functions (View)
 
   /**
@@ -1235,6 +1495,151 @@ contract SPARKController {
     uint256 count = 0;
     for (uint256 i = 0; i < allEnergyOffers.length; i++) {
       if (allEnergyOffers[i].status == OfferStatus.ACTIVE) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  // Energy Buy Offer Query Functions
+
+  /**
+   * @notice Gets all active energy buy offers (paginated)
+   * @param offset Starting index
+   * @param limit Number of records to return
+   * @return Array of active energy buy offers
+   */
+  function getActiveBuyOffers(uint256 offset, uint256 limit) external view returns (EnergyBuyOffer[] memory) {
+    // First, count active buy offers
+    uint256 activeCount = 0;
+    for (uint256 i = 0; i < allEnergyBuyOffers.length; i++) {
+      if (allEnergyBuyOffers[i].status == OfferStatus.ACTIVE) {
+        activeCount++;
+      }
+    }
+
+    if (offset >= activeCount) {
+      return new EnergyBuyOffer[](0);
+    }
+
+    uint256 end = offset + limit;
+    if (end > activeCount) {
+      end = activeCount;
+    }
+
+    uint256 resultLength = end - offset;
+    EnergyBuyOffer[] memory result = new EnergyBuyOffer[](resultLength);
+
+    uint256 currentIndex = 0;
+    uint256 resultIndex = 0;
+
+    for (uint256 i = 0; i < allEnergyBuyOffers.length && resultIndex < resultLength; i++) {
+      if (allEnergyBuyOffers[i].status == OfferStatus.ACTIVE) {
+        if (currentIndex >= offset) {
+          result[resultIndex] = allEnergyBuyOffers[i];
+          resultIndex++;
+        }
+        currentIndex++;
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * @notice Gets all energy buy offers for a specific buyer (paginated)
+   * @param buyer The buyer address
+   * @param offset Starting index
+   * @param limit Number of records to return
+   * @return Array of energy buy offers
+   */
+  function getBuyOffersByBuyer(
+    address buyer,
+    uint256 offset,
+    uint256 limit
+  ) external view returns (EnergyBuyOffer[] memory) {
+    EnergyBuyOffer[] storage offers = buyerOffers[buyer];
+
+    if (offset >= offers.length) {
+      return new EnergyBuyOffer[](0);
+    }
+
+    uint256 end = offset + limit;
+    if (end > offers.length) {
+      end = offers.length;
+    }
+
+    uint256 resultLength = end - offset;
+    EnergyBuyOffer[] memory result = new EnergyBuyOffer[](resultLength);
+
+    for (uint256 i = 0; i < resultLength; i++) {
+      result[i] = offers[offset + i];
+    }
+
+    return result;
+  }
+
+  /**
+   * @notice Gets all energy buy offers globally (paginated)
+   * @param offset Starting index
+   * @param limit Number of records to return
+   * @return Array of all energy buy offers
+   */
+  function getAllBuyOffers(uint256 offset, uint256 limit) external view returns (EnergyBuyOffer[] memory) {
+    if (offset >= allEnergyBuyOffers.length) {
+      return new EnergyBuyOffer[](0);
+    }
+
+    uint256 end = offset + limit;
+    if (end > allEnergyBuyOffers.length) {
+      end = allEnergyBuyOffers.length;
+    }
+
+    uint256 resultLength = end - offset;
+    EnergyBuyOffer[] memory result = new EnergyBuyOffer[](resultLength);
+
+    for (uint256 i = 0; i < resultLength; i++) {
+      result[i] = allEnergyBuyOffers[offset + i];
+    }
+
+    return result;
+  }
+
+  /**
+   * @notice Gets a specific energy buy offer by ID
+   * @param offerId The buy offer ID
+   * @return The energy buy offer
+   */
+  function getBuyOfferById(uint256 offerId) external view returns (EnergyBuyOffer memory) {
+    if (offerId >= allEnergyBuyOffers.length) revert InvalidBuyOfferId();
+    return allEnergyBuyOffers[offerId];
+  }
+
+  /**
+   * @notice Gets total number of energy buy offers globally
+   * @return Total buy offer count
+   */
+  function getTotalBuyOffersCount() external view returns (uint256) {
+    return allEnergyBuyOffers.length;
+  }
+
+  /**
+   * @notice Gets number of energy buy offers for a buyer
+   * @param buyer The buyer address
+   * @return Buyer's offer count
+   */
+  function getBuyerOffersCount(address buyer) external view returns (uint256) {
+    return buyerOffers[buyer].length;
+  }
+
+  /**
+   * @notice Gets total number of active energy buy offers
+   * @return Active buy offer count
+   */
+  function getActiveBuyOffersCount() external view returns (uint256) {
+    uint256 count = 0;
+    for (uint256 i = 0; i < allEnergyBuyOffers.length; i++) {
+      if (allEnergyBuyOffers[i].status == OfferStatus.ACTIVE) {
         count++;
       }
     }

@@ -38,7 +38,11 @@
     "create:offer": "tsx scripts/hedera/create-energy-offer.ts",
     "cancel:offer": "tsx scripts/hedera/cancel-energy-offer.ts",
     "match:offer": "tsx scripts/hedera/match-energy-offer.ts",
-    "query:offers": "tsx scripts/hedera/query-offers.ts"
+    "query:offers": "tsx scripts/hedera/query-offers.ts",
+    "create:buy-offer": "tsx scripts/hedera/create-energy-buy-offer.ts",
+    "cancel:buy-offer": "tsx scripts/hedera/cancel-energy-buy-offer.ts",
+    "match:buy-offer": "tsx scripts/hedera/match-energy-buy-offer.ts",
+    "query:buy-offers": "tsx scripts/hedera/query-buy-offers.ts"
   },
   "dependencies": {
     "@hashgraph/sdk": "2.75.0",
