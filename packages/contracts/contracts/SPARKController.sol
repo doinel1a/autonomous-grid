@@ -141,9 +141,9 @@ contract SPARKController {
   /// @notice All energy offers (global)
   EnergyOffer[] public allEnergyOffers;
 
-  /// @notice Energy offers per seller
-  /// @dev seller => EnergyOffer[]
-  mapping(address => EnergyOffer[]) public sellerOffers;
+  /// @notice Energy offer IDs per seller
+  /// @dev seller => offer IDs array
+  mapping(address => uint256[]) public sellerOfferIds;
 
   /// @notice Locked balance per user (energy locked in active offers)
   /// @dev user => locked balance in SPARK tokens (smallest units)
@@ -158,9 +158,9 @@ contract SPARKController {
   /// @notice All energy buy offers (global)
   EnergyBuyOffer[] public allEnergyBuyOffers;
 
-  /// @notice Energy buy offers per buyer
-  /// @dev buyer => EnergyBuyOffer[]
-  mapping(address => EnergyBuyOffer[]) public buyerOffers;
+  /// @notice Energy buy offer IDs per buyer
+  /// @dev buyer => buy offer IDs array
+  mapping(address => uint256[]) public buyerOfferIds;
 
   /// @notice Next buy offer ID counter
   uint256 private nextBuyOfferId;
@@ -416,6 +416,12 @@ contract SPARKController {
 
   /// @notice Thrown when Pyth oracle returns invalid price data
   error InvalidOraclePrice();
+
+  /// @notice Thrown when signature has invalid length
+  error InvalidSignatureLength();
+
+  /// @notice Thrown when signature version is invalid
+  error InvalidSignatureVersion();
 
   // Modifiers
 
@@ -731,7 +737,7 @@ contract SPARKController {
 
     // Store offer
     allEnergyOffers.push(offer);
-    sellerOffers[seller].push(offer);
+    sellerOfferIds[seller].push(offerId);
 
     // Increment active offers counter
     activeOffersCount++;
@@ -767,9 +773,6 @@ contract SPARKController {
 
     // Update offer status
     offer.status = OfferStatus.CANCELLED;
-
-    // Update seller offers array
-    _updateSellerOffer(offer.seller, offerId, OfferStatus.CANCELLED);
 
     // Decrement active offers counter
     activeOffersCount--;
@@ -853,11 +856,10 @@ contract SPARKController {
       });
 
       allEnergyOffers.push(newOffer);
-      sellerOffers[seller].push(newOffer);
+      sellerOfferIds[seller].push(newOfferId);
 
       // Update original offer status
       offer.status = OfferStatus.PARTIALLY_FILLED;
-      _updateSellerOffer(seller, offerId, OfferStatus.PARTIALLY_FILLED);
 
       // Decrement counter for partially filled, increment for new active offer (net: no change)
       activeOffersCount--;
@@ -867,7 +869,6 @@ contract SPARKController {
     } else {
       // Full match - mark as completed
       offer.status = OfferStatus.COMPLETED;
-      _updateSellerOffer(seller, offerId, OfferStatus.COMPLETED);
 
       // Decrement active offers counter
       activeOffersCount--;
@@ -876,22 +877,6 @@ contract SPARKController {
     }
 
     emit OfferMatched(offerId, seller, buyer, amountWh, pricePerKwh, timestamp, newOfferId);
-  }
-
-  /**
-   * @notice Internal function to update seller's offer array
-   * @param seller The seller address
-   * @param offerId The offer ID
-   * @param status The new status
-   */
-  function _updateSellerOffer(address seller, uint256 offerId, OfferStatus status) internal {
-    EnergyOffer[] storage offers = sellerOffers[seller];
-    for (uint256 i = 0; i < offers.length; i++) {
-      if (offers[i].offerId == offerId) {
-        offers[i].status = status;
-        break;
-      }
-    }
   }
 
   // Energy Buy Offer Functions
@@ -926,7 +911,7 @@ contract SPARKController {
 
     // Store buy offer
     allEnergyBuyOffers.push(buyOffer);
-    buyerOffers[buyer].push(buyOffer);
+    buyerOfferIds[buyer].push(offerId);
 
     // Increment active buy offers counter
     activeBuyOffersCount++;
@@ -955,9 +940,6 @@ contract SPARKController {
 
     // Update offer status
     buyOffer.status = OfferStatus.CANCELLED;
-
-    // Update buyer offers array
-    _updateBuyerOffer(buyOffer.buyer, offerId, OfferStatus.CANCELLED);
 
     // Decrement active buy offers counter
     activeBuyOffersCount--;
@@ -1039,11 +1021,10 @@ contract SPARKController {
       });
 
       allEnergyBuyOffers.push(newBuyOffer);
-      buyerOffers[buyer].push(newBuyOffer);
+      buyerOfferIds[buyer].push(newOfferId);
 
       // Update original offer status
       buyOffer.status = OfferStatus.PARTIALLY_FILLED;
-      _updateBuyerOffer(buyer, offerId, OfferStatus.PARTIALLY_FILLED);
 
       // Decrement counter for partially filled, increment for new active offer (net: no change)
       activeBuyOffersCount--;
@@ -1053,7 +1034,6 @@ contract SPARKController {
     } else {
       // Full match - mark as completed
       buyOffer.status = OfferStatus.COMPLETED;
-      _updateBuyerOffer(buyer, offerId, OfferStatus.COMPLETED);
 
       // Decrement active buy offers counter
       activeBuyOffersCount--;
@@ -1062,22 +1042,6 @@ contract SPARKController {
     }
 
     emit BuyOfferMatched(offerId, buyer, seller, amountWh, maxPricePerKwh, timestamp, newOfferId);
-  }
-
-  /**
-   * @notice Internal function to update buyer's offer array
-   * @param buyer The buyer address
-   * @param offerId The offer ID
-   * @param status The new status
-   */
-  function _updateBuyerOffer(address buyer, uint256 offerId, OfferStatus status) internal {
-    EnergyBuyOffer[] storage offers = buyerOffers[buyer];
-    for (uint256 i = 0; i < offers.length; i++) {
-      if (offers[i].offerId == offerId) {
-        offers[i].status = status;
-        break;
-      }
-    }
   }
 
   // Query Functions (View)
@@ -1381,22 +1345,22 @@ contract SPARKController {
     uint256 offset,
     uint256 limit
   ) external view returns (EnergyOffer[] memory) {
-    EnergyOffer[] storage offers = sellerOffers[seller];
+    uint256[] storage offerIds = sellerOfferIds[seller];
 
-    if (offset >= offers.length) {
+    if (offset >= offerIds.length) {
       return new EnergyOffer[](0);
     }
 
     uint256 end = offset + limit;
-    if (end > offers.length) {
-      end = offers.length;
+    if (end > offerIds.length) {
+      end = offerIds.length;
     }
 
     uint256 resultLength = end - offset;
     EnergyOffer[] memory result = new EnergyOffer[](resultLength);
 
     for (uint256 i = 0; i < resultLength; i++) {
-      result[i] = offers[offset + i];
+      result[i] = allEnergyOffers[offerIds[offset + i]];
     }
 
     return result;
@@ -1508,7 +1472,7 @@ contract SPARKController {
    * @return Seller's offer count
    */
   function getSellerOffersCount(address seller) external view returns (uint256) {
-    return sellerOffers[seller].length;
+    return sellerOfferIds[seller].length;
   }
 
   /**
@@ -1576,22 +1540,22 @@ contract SPARKController {
     uint256 offset,
     uint256 limit
   ) external view returns (EnergyBuyOffer[] memory) {
-    EnergyBuyOffer[] storage offers = buyerOffers[buyer];
+    uint256[] storage offerIds = buyerOfferIds[buyer];
 
-    if (offset >= offers.length) {
+    if (offset >= offerIds.length) {
       return new EnergyBuyOffer[](0);
     }
 
     uint256 end = offset + limit;
-    if (end > offers.length) {
-      end = offers.length;
+    if (end > offerIds.length) {
+      end = offerIds.length;
     }
 
     uint256 resultLength = end - offset;
     EnergyBuyOffer[] memory result = new EnergyBuyOffer[](resultLength);
 
     for (uint256 i = 0; i < resultLength; i++) {
-      result[i] = offers[offset + i];
+      result[i] = allEnergyBuyOffers[offerIds[offset + i]];
     }
 
     return result;
@@ -1647,7 +1611,7 @@ contract SPARKController {
    * @return Buyer's offer count
    */
   function getBuyerOffersCount(address buyer) external view returns (uint256) {
-    return buyerOffers[buyer].length;
+    return buyerOfferIds[buyer].length;
   }
 
   /**
@@ -1758,7 +1722,7 @@ contract SPARKController {
     bytes32 ethSignedMessageHash,
     bytes memory signature
   ) internal pure returns (address) {
-    require(signature.length == 65, "Invalid signature length");
+    if (signature.length != 65) revert InvalidSignatureLength();
 
     bytes32 r;
     bytes32 s;
@@ -1775,7 +1739,7 @@ contract SPARKController {
       v += 27;
     }
 
-    require(v == 27 || v == 28, "Invalid signature version");
+    if (v != 27 && v != 28) revert InvalidSignatureVersion();
 
     return ecrecover(ethSignedMessageHash, v, r, s);
   }
@@ -1875,7 +1839,9 @@ contract SPARKController {
 
     (int64 eurUsdPrice, int32 expo, ) = getEurUsdPrice();
 
-    uint256 priceInUSD = uint256(int256(priceInEuroPerKwh) * eurUsdPrice) / (10 ** uint32(-expo));
+    // Calculate USD price with safe math (exponent is validated as negative in getEurUsdPrice)
+    uint256 multiplier = 10 ** uint32(-expo);
+    uint256 priceInUSD = (priceInEuroPerKwh * uint256(int256(eurUsdPrice))) / multiplier;
 
     emit GridEnergyPriceUpdated(priceInEuroPerKwh, priceInUSD, eurUsdPrice, block.timestamp);
   }
@@ -1891,7 +1857,9 @@ contract SPARKController {
   {
     (int64 eurUsdPrice, int32 expoValue, ) = getEurUsdPrice();
 
-    uint256 priceInUSD = uint256(int256(gridEnergyPriceEUR) * eurUsdPrice) / (10 ** uint32(-expoValue));
+    // Calculate USD price with safe math (exponent is validated as negative in getEurUsdPrice)
+    uint256 multiplier = 10 ** uint32(-expoValue);
+    uint256 priceInUSD = (gridEnergyPriceEUR * uint256(int256(eurUsdPrice))) / multiplier;
 
     return (priceInUSD, eurUsdPrice, expoValue, lastGridPriceUpdate);
   }
